@@ -4,7 +4,7 @@ import os
 import time
 import matplotlib.pyplot as plt
 import pandas as pd
-from common import load_data, exract_data_vectors
+from common import load_data, exract_data_vectors, get_maxe_rmse
 
 ''' ========== Q2 - Extended kalman filter ========== '''
 
@@ -29,6 +29,7 @@ class ExtendedKalmanFilter:
     #     return self.meu_t, self.sigma_t
 
     def perform_ekf(self, data_vec, sigmot):
+        # TODO: https://github.com/motokimura/kalman_filter_witi_kitti
         sigma_x = sigmot['sigma_x']
         sigma_y = sigmot['sigma_y']
         sigma_vx = sigmot['sigma_vx']
@@ -55,19 +56,21 @@ class ExtendedKalmanFilter:
             G[0, 2] = -(vf / omega) * np.cos(theta) + (vf / omega) * np.cos(theta + omega * dt)
             G[1, 2] = -(vf / omega) * np.sin(theta) + (vf / omega) * np.sin(theta + omega * dt)
 
-            V = np.zeros([3, 2])
-            V[0, 0] = -(1 / omega) * np.sin(theta) + (1 / omega) * np.sin(theta + omega * dt)
-            V[0, 1] = (vf / (omega ** 2)) * np.sin(theta) - (vf / (omega ** 2)) * np.sin(theta + omega * dt) + (
-                    vf / omega) * np.cos(theta + omega * dt) * dt
-            V[1, 0] = (1 / omega) * np.cos(theta) - (1 / omega) * np.cos(theta + omega * dt)
-            V[1, 1] = -(vf / (omega ** 2)) * np.cos(theta) + (vf / (omega ** 2)) * np.cos(theta + omega * dt) - (
-                    vf / omega) * np.sin(theta + omega * dt) * dt
-            V[2, 1] = dt
+            # V = np.zeros([3, 2])
+            # V[0, 0] = -(1 / omega) * np.sin(theta) + (1 / omega) * np.sin(theta + omega * dt)
+            # V[0, 1] = (vf / (omega ** 2)) * np.sin(theta) - (vf / (omega ** 2)) * np.sin(theta + omega * dt) + (
+            #         vf / omega) * np.cos(theta + omega * dt) * dt
+            # V[1, 0] = (1 / omega) * np.cos(theta) - (1 / omega) * np.cos(theta + omega * dt)
+            # V[1, 1] = -(vf / (omega ** 2)) * np.cos(theta) + (vf / (omega ** 2)) * np.cos(theta + omega * dt) - (
+            #         vf / omega) * np.sin(theta + omega * dt) * dt
+            # V[2, 1] = dt
 
-            # R = np.diag([sigma_vx ** 2, sigma_vy ** 2, sigma_yaw ** 2])
-            R = np.diag([sigma_vx ** 2, sigma_yaw ** 2])
+            R = np.diag([sigma_vx ** 2, sigma_vy ** 2, sigma_yaw ** 2])
+            R
+            # R = np.diag([sigma_vx ** 2, sigma_yaw ** 2])
 
-            self.sigma_t_predict = G @ self.sigma_t @ G.T + V @ R @ V.T
+            self.sigma_t_predict = G @ self.sigma_t @ G.T + R
+            # self.sigma_t_predict = G @ self.sigma_t @ G.T + V @ R @ V.T
 
             H = np.zeros([2, 3])
             H[0, 0] = 1
@@ -83,6 +86,8 @@ class ExtendedKalmanFilter:
 
             total_meu.append(self.meu_t.copy())
             total_sigma.append(self.sigma_t.copy())
+        total_meu = np.array(total_meu)
+        total_meu = np.vstack([np.array([0, 0, 0]), total_meu])
         return np.array(total_meu)
 
 
@@ -177,6 +182,8 @@ def extended_kalman_filter(result_dir_timed, data):
     ekf = ExtendedKalmanFilter(meu_0, sigma_0)
     total_est_meu = ekf.perform_ekf(data_vec, sigmot)
 
+    max_E, rmse = get_maxe_rmse(car_w_coordinates_m, total_est_meu)
+
     plt.figure()
     plt.scatter(car_w_coordinates_m[:, 0], car_w_coordinates_m[:, 1], s=1, color='blue', label='GT')
     plt.scatter(noised_car_w_coordinates_m[:, 0], noised_car_w_coordinates_m[:, 1], s=1, marker='x', color='red',
@@ -184,7 +191,7 @@ def extended_kalman_filter(result_dir_timed, data):
     plt.scatter(total_est_meu[:, 0], total_est_meu[:, 1], s=1, marker='x', color='green', label='kalman CV')
     plt.legend()
     plt.grid()
-    plt.title(f'Extended Kalman - RMSE=') #{round(rmse, 2)} [m], maxE={round(max_E, 2)} [m]')
+    plt.title(f'Extended Kalman - RMSE={round(rmse, 2)} [m], maxE={round(max_E, 2)} [m]')
     plt.xlabel('east [m]')
     plt.ylabel('north [m]')
     plt.show(block=False)

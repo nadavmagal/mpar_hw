@@ -3,8 +3,15 @@ import pykitti
 import os
 import time
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 import pandas as pd
-from common import load_data, exract_data_vectors
+from common import load_data, exract_data_vectors, get_maxe_rmse
+
+SAVE_VIDEO = False
+if SAVE_VIDEO:
+    pass
+    vid_fig, vid_axs = plt.subplots(1, 2, figsize=[15, 10], dpi=300)
+    # vid_fig = plt.figure(figsize=[15, 10], dpi=300)
 
 ''' ========== Q1 - kalman filter ========== '''
 
@@ -81,10 +88,8 @@ def kalman_filter(result_dir_timed, data):
     plt.show(block=False)
 
     ''' add noise to GT data '''
-    sigma_noise = 3
-    # noised_car_w_coordinates_m = car_w_coordinates_m + np.random.normal(0, np.sqrt(sigma_noise), car_w_coordinates_m.shape)
+    sigma_noise = 10
     noised_car_w_coordinates_m = car_w_coordinates_m + np.random.normal(0, sigma_noise, car_w_coordinates_m.shape)
-
     plt.figure()
     plt.scatter(car_w_coordinates_m[:, 0], car_w_coordinates_m[:, 1], s=1, color='blue', label='GT')
     plt.scatter(noised_car_w_coordinates_m[:, 0], noised_car_w_coordinates_m[:, 1], s=1, marker='x', color='red',
@@ -108,20 +113,28 @@ def kalman_filter(result_dir_timed, data):
     sigma_0_vx = 3
     sigma_0_vy = 3
     sigma_a = 2
-    total_est_meu = kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy, sigma_0_x,
-                                             sigma_0_y, sigma_a, x_0, y_0, v_x_0, v_y_0)
+    total_est_meu, dead_reckoning, total_est_sigma = kalman_constant_velocity(delta_time, noised_car_w_coordinates_m,
+                                                                              sigma_0_vx, sigma_0_vy, sigma_0_x,
+                                                                              sigma_0_y, sigma_a, x_0, y_0, v_x_0,
+                                                                              v_y_0, result_dir_timed,
+                                                                              car_w_coordinates_m)
+
+    if SAVE_VIDEO:
+        from frames_to_video import create_video
+        create_video(result_dir_timed)
     # total_est_meu = kalman_constant_velocity_flip(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy,
     #                                               sigma_0_x,
     #                                               sigma_0_y, sigma_a, x_0, y_0, v_x_0, v_y_0)
-    ex_ey = car_w_coordinates_m[100:, :] - total_est_meu[100:, 0:2]
-    max_E = np.max(np.sum(np.abs(ex_ey[100:, :]), axis=1))
-    rmse = np.sqrt(np.sum(np.power(ex_ey, 2)) / total_est_meu.shape[0])
-    print(f'rmse={round(rmse, 3)} :: maxE={round(max_E, 3)}')
+    max_E, rmse = get_maxe_rmse(car_w_coordinates_m, total_est_meu)
+    print(f'kalman rmse={round(rmse, 3)} :: maxE={round(max_E, 3)}')
+
+    max_E_dead, rmse_dead = get_maxe_rmse(car_w_coordinates_m[-dead_reckoning.shape[0]:, :], dead_reckoning)
+    print(f'dead_reckoning rmse={round(rmse_dead, 3)} :: maxE={round(max_E_dead, 3)}')
 
     # rmse, total_est_meu = explore_kalman_cv(car_w_coordinates_m, delta_time, noised_car_w_coordinates_m)
 
     plt.figure()
-    plt.title(f'Kalman constant velocity - RMSE={round(rmse, 2)} [m], maxE={round(max_E, 2)} [m]')
+    plt.title(rf'Kalman constant velocity $\sigma_x = \sigma_y={sigma_noise}$ - RMSE={round(rmse, 2)} [m], maxE={round(max_E, 2)} [m]')
     plt.scatter(car_w_coordinates_m[:, 0], car_w_coordinates_m[:, 1], s=1, label='GT')
     plt.scatter(noised_car_w_coordinates_m[:, 0], noised_car_w_coordinates_m[:, 1], s=1, marker='x', color='red',
                 label='noised_gt')
@@ -130,6 +143,30 @@ def kalman_filter(result_dir_timed, data):
     plt.ylabel('y [m]')
     plt.grid()
     plt.legend()
+    plt.show(block=False)
+    a = 3
+
+    diff_x = car_w_coordinates_m[:, 0] - total_est_meu[:, 0]
+    diff_y = car_w_coordinates_m[:, 1] - total_est_meu[:, 1]
+    plt.figure()
+    plt.subplot(2, 1, 1)
+    plt.plot(diff_x, label='error in x [m]')
+    plt.plot(total_est_sigma[:, 0, 0], color='red', label='sigma x')
+    plt.plot(-total_est_sigma[:, 0, 0], color='red', label='sigma x')
+    plt.title('Error in x [m] and variance x')
+    plt.xlabel('sample number')
+    plt.ylabel('x error [m] and x variance')
+    plt.grid()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(diff_y, label='error in y [m]')
+    plt.plot(total_est_sigma[:, 1, 1], color='red', label='sigma y')
+    plt.plot(-total_est_sigma[:, 1, 1], color='red', label='sigma y')
+    plt.title('Error in y [m] and variance y')
+    plt.xlabel('sample number')
+    plt.ylabel('y error [m] and y variance')
+    plt.grid()
+
     plt.show(block=False)
     a = 3
 
@@ -150,9 +187,9 @@ def explore_kalman_cv(car_w_coordinates_m, delta_time, noised_car_w_coordinates_
                 sigma_0_vy = cur_sigma_0_v
                 sigma_a = cur_sigma_a
                 try:
-                    total_est_meu = kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx,
-                                                             sigma_0_vy, sigma_0_x,
-                                                             sigma_0_y, sigma_a, v_x_0, v_y_0)
+                    total_est_meu, _ = kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx,
+                                                                sigma_0_vy, sigma_0_x,
+                                                                sigma_0_y, sigma_a, v_x_0, v_y_0)
                 except:
                     print('fail')
                     continue
@@ -181,18 +218,21 @@ def explore_kalman_cv(car_w_coordinates_m, delta_time, noised_car_w_coordinates_
 
 
 def kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy, sigma_0_x, sigma_0_y,
-                             sigma_a, x_0, y_0, v_x_0, v_y_0):
+                             sigma_a, x_0, y_0, v_x_0, v_y_0, result_dir_timed, car_w_coordinates_m):
     total_est_meu = []
     total_est_sigma = []
+    dead_reckoning = []
+    total_time_pass = 0
     for ii, cur_car_coord, cur_delta_t in zip(range(noised_car_w_coordinates_m.shape[0]), noised_car_w_coordinates_m,
                                               delta_time):
+        print(f'{ii}/{noised_car_w_coordinates_m.shape[0]}')
         # cur_delta_t = 0.1*1e3
         if ii == 0:
             meu_0 = np.array([x_0, y_0, v_x_0, v_y_0])
-            sigma_0 = np.diag([sigma_0_x ** 2, sigma_0_y ** 2, sigma_0_vx ** 2, sigma_0_vy ** 2])
+            sigma_0 = np.diag([sigma_0_x ** 2, sigma_0_y ** 2, (sigma_0_vx) ** 2, (sigma_0_vy) ** 2])
             filter_cv = KalmanFilterConstantVelocity(meu_0, sigma_0)
             continue
-
+        total_time_pass += cur_delta_t
         z_t = cur_car_coord
 
         A_t = np.array([[1, 0, cur_delta_t, 0],
@@ -208,52 +248,60 @@ def kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx,
         C_t[0, 0] = 1
         C_t[1, 1] = 1
 
-        Q_t = np.diag([sigma_0_vx ** 2, sigma_0_vy ** 2])  # TODO: maybe change this not to be like sigma 0
+        Q_t = np.diag([(sigma_0_vx) ** 2, (sigma_0_vy) ** 2])  # TODO: maybe change this not to be like sigma 0
 
         cur_est_meu_t, cur_est_sigma_t = filter_cv.filter_step(z_t, A_t, R_t, C_t, Q_t)
         total_est_meu.append(cur_est_meu_t)
         total_est_sigma.append(cur_est_sigma_t)
+
+        if total_time_pass > 5:
+            if len(dead_reckoning) == 0:
+                cur_dead_reckoning = cur_est_meu_t[0:2]
+            else:
+                cur_dead_reckoning = cur_dead_reckoning + cur_est_meu_t[2:4] * cur_delta_t
+
+            dead_reckoning.append(cur_dead_reckoning)
+
+        if SAVE_VIDEO:
+            plt.figure(vid_fig)
+
+            ax0 = vid_axs[0]
+            ax0.clear()
+            ax0.scatter(car_w_coordinates_m[:, 0], car_w_coordinates_m[:, 1], s=1, color='blue', label='GT')
+            ax0.scatter(noised_car_w_coordinates_m[:, 0], noised_car_w_coordinates_m[:, 1], s=1, marker='x',
+                        color='red',
+                        label='noised_gt')
+            ax0.scatter(np.array(total_est_meu)[:, 0], np.array(total_est_meu)[:, 1], color='green', marker='x', s=1,
+                        label='Kalman - CV')
+
+            if total_time_pass > 0:
+                cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), 4 * cur_est_sigma_t[0][0],
+                                      4 * cur_est_sigma_t[1][1],
+                                      np.rad2deg(np.arctan2(cur_est_meu_t[3], cur_est_meu_t[2])), edgecolor='green',
+                                      fc='None', lw=2)
+                ax0.add_patch(cur_ellipse)
+                ax0.scatter(np.array(dead_reckoning)[:, 0], np.array(dead_reckoning)[:, 1], color='magenta', marker='x',
+                            s=1, label='dead reckoning')
+
+            ax0.legend()
+            ax0.grid()
+            ax0.set_title(f'kalman filter - constant velocity - car trajectory - time={round(total_time_pass, 2)} sec')
+            ax0.set_xlabel('east [m]')
+            ax0.set_ylabel('north [m]')
+
+            ax1 = vid_axs[1]
+            ax1.clear()
+            ax1.imshow(cur_est_sigma_t)
+            ax1.set_title('state covariance matrix')
+
+            image_path = os.path.join(result_dir_timed, f'{ii}.png')
+            vid_fig.savefig(image_path, dpi=150)
+
     total_est_meu = np.array(total_est_meu)
     total_est_meu = np.vstack([np.array([0, 0, 0, 0]), total_est_meu])
-    return total_est_meu
-
-
-def kalman_constant_velocity_flip(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy, sigma_0_x, sigma_0_y,
-                                  sigma_a, x_0, y_0, v_x_0, v_y_0):
-    total_est_meu = []
-    total_est_sigma = []
-    for ii, cur_car_coord, cur_delta_t in zip(range(noised_car_w_coordinates_m.shape[0]), noised_car_w_coordinates_m,
-                                              delta_time):
-        # cur_delta_t = 0.1*1e3
-        if ii == 0:
-            meu_0 = np.array([x_0, v_x_0, y_0, v_y_0])
-            sigma_0 = np.diag([sigma_0_x ** 2, sigma_0_vx ** 2, sigma_0_y ** 2, sigma_0_vy ** 2])
-            filter_cv = KalmanFilterConstantVelocity(meu_0, sigma_0)
-            continue
-
-        z_t = cur_car_coord
-
-        A_t = np.array([[1,cur_delta_t, 0,  0],
-                        [0, 1, 0, 0],
-                        [0, 0, 1, cur_delta_t],
-                        [0, 0, 0, 1]])
-
-        R_t = np.zeros([4, 4])
-        R_t[1, 1] = cur_delta_t * sigma_a ** 2
-        R_t[3, 3] = cur_delta_t * sigma_a ** 2
-
-        C_t = np.zeros([2, 4])
-        C_t[0, 0] = 1
-        C_t[1, 2] = 1
-
-        Q_t = np.diag([sigma_0_vx ** 2, sigma_0_vy ** 2])  # TODO: maybe change this not to be like sigma 0
-
-        cur_est_meu_t, cur_est_sigma_t = filter_cv.filter_step(z_t, A_t, R_t, C_t, Q_t)
-        total_est_meu.append(cur_est_meu_t)
-        total_est_sigma.append(cur_est_sigma_t)
-    total_est_meu = np.array(total_est_meu)
-    total_est_meu = np.vstack([np.array([0, 0, 0, 0]), total_est_meu])
-    return total_est_meu
+    dead_reckoning = np.array(dead_reckoning)
+    total_est_sigma = np.array(total_est_sigma)
+    return total_est_meu, dead_reckoning, total_est_sigma
 
 
 def main():
@@ -276,5 +324,5 @@ def main():
 
 
 if __name__ == "__main__":
-    np.random.seed(0)
+    # np.random.seed(0)
     main()
