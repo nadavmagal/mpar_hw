@@ -46,7 +46,7 @@ def get_maxe_rmse(car_w_coordinates_m, total_est_meu):
 
 
 def save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_reckoning, ii,
-                     noised_car_w_coordinates_m, result_dir_timed, total_est_meu, total_time_pass):
+                     noised_car_w_coordinates_m, result_dir_timed, total_est_meu, total_time_pass, method):
     plt.figure(vid_fig)
     ax0 = vid_axs[0]
     ax0.clear()
@@ -57,10 +57,16 @@ def save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_r
     ax0.scatter(np.array(total_est_meu)[:, 0], np.array(total_est_meu)[:, 1], color='green', marker='x', s=1,
                 label='Kalman - CV')
     if total_time_pass > 5:
-        cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), 4 * cur_est_sigma_t[0][0],
-                              4 * cur_est_sigma_t[1][1],
-                              np.rad2deg(np.arctan2(cur_est_meu_t[3], cur_est_meu_t[2])), edgecolor='green',
-                              fc='None', lw=2)
+        if method=='Kalman':
+            cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), 4 * cur_est_sigma_t[0][0],
+                                  4 * cur_est_sigma_t[1][1],
+                                  np.rad2deg(np.arctan2(cur_est_meu_t[3], cur_est_meu_t[2])), edgecolor='green',
+                                  fc='None', lw=2)
+        elif method == 'EKF':
+            cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), 4 * cur_est_sigma_t[0][0],
+                                  4 * cur_est_sigma_t[1][1],
+                                  np.rad2deg(cur_est_meu_t[2]), edgecolor='green',
+                                  fc='None', lw=2)
         ax0.add_patch(cur_ellipse)
         ax0.scatter(np.array(dead_reckoning)[:, 0], np.array(dead_reckoning)[:, 1], color='magenta', marker='x',
                     s=1, label='dead reckoning')

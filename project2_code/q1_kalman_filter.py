@@ -3,11 +3,11 @@ import pykitti
 import os
 import time
 import matplotlib.pyplot as plt
-
+from frames_to_video import create_video
 import pandas as pd
 from common import load_data, exract_data_vectors, get_maxe_rmse, save_video_frame
 
-SAVE_VIDEO = True
+SAVE_VIDEO = False
 
 
 ''' ========== Q1 - kalman filter ========== '''
@@ -60,6 +60,10 @@ def kalman_filter(result_dir_timed, data):
 
     vx = np.divide(delta_x, delta_time[1::])
     vy = np.divide(delta_y, delta_time[1::])
+    vxvy = np.array([vx, vy]).T
+
+    vxvy = np.vstack([np.array([0, 0]), vxvy])
+
 
     ''' plot GT LLA and ENU data '''
     plt.figure()
@@ -114,10 +118,9 @@ def kalman_filter(result_dir_timed, data):
                                                                               sigma_0_vx, sigma_0_vy, sigma_0_x,
                                                                               sigma_0_y, sigma_a, x_0, y_0, v_x_0,
                                                                               v_y_0, result_dir_timed,
-                                                                              car_w_coordinates_m)
+                                                                              car_w_coordinates_m, vxvy)
 
     if SAVE_VIDEO:
-        from frames_to_video import create_video
         create_video(result_dir_timed)
     # total_est_meu = kalman_constant_velocity_flip(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy,
     #                                               sigma_0_x,
@@ -148,8 +151,8 @@ def kalman_filter(result_dir_timed, data):
     plt.figure()
     plt.subplot(2, 1, 1)
     plt.plot(diff_x, label='error in x [m]')
-    plt.plot(total_est_sigma[:, 0, 0], color='red', label='sigma x')
-    plt.plot(-total_est_sigma[:, 0, 0], color='red', label='sigma x')
+    plt.plot(np.sqrt(total_est_sigma[:, 0, 0]), color='red', label='sigma x')
+    plt.plot(-np.sqrt(total_est_sigma[:, 0, 0]), color='red', label='sigma x')
     plt.title('Error in x [m] and variance x')
     plt.xlabel('sample number')
     plt.ylabel('x error [m] and x variance')
@@ -157,8 +160,8 @@ def kalman_filter(result_dir_timed, data):
 
     plt.subplot(2, 1, 2)
     plt.plot(diff_y, label='error in y [m]')
-    plt.plot(total_est_sigma[:, 1, 1], color='red', label='sigma y')
-    plt.plot(-total_est_sigma[:, 1, 1], color='red', label='sigma y')
+    plt.plot(np.sqrt(total_est_sigma[:, 1, 1]), color='red', label='sigma y')
+    plt.plot(-np.sqrt(total_est_sigma[:, 1, 1]), color='red', label='sigma y')
     plt.title('Error in y [m] and variance y')
     plt.xlabel('sample number')
     plt.ylabel('y error [m] and y variance')
@@ -215,13 +218,13 @@ def explore_kalman_cv(car_w_coordinates_m, delta_time, noised_car_w_coordinates_
 
 
 def kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx, sigma_0_vy, sigma_0_x, sigma_0_y,
-                             sigma_a, x_0, y_0, v_x_0, v_y_0, result_dir_timed, car_w_coordinates_m):
+                             sigma_a, x_0, y_0, v_x_0, v_y_0, result_dir_timed, car_w_coordinates_m, vxvy):
     total_est_meu = []
     total_est_sigma = []
     dead_reckoning = []
-    total_time_pass = 0
-    for ii, cur_car_coord, cur_delta_t in zip(range(noised_car_w_coordinates_m.shape[0]), noised_car_w_coordinates_m,
-                                              delta_time):
+    total_time_pass = 0.
+    for ii, cur_car_coord, cur_delta_t, cur_vxvy in zip(range(noised_car_w_coordinates_m.shape[0]), noised_car_w_coordinates_m,
+                                              delta_time, vxvy):
         print(f'{ii}/{noised_car_w_coordinates_m.shape[0]}')
         # cur_delta_t = 0.1*1e3
         if ii == 0:
@@ -255,13 +258,13 @@ def kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx,
             if len(dead_reckoning) == 0:
                 cur_dead_reckoning = cur_est_meu_t[0:2]
             else:
-                cur_dead_reckoning = cur_dead_reckoning + cur_est_meu_t[2:4] * cur_delta_t
+                cur_dead_reckoning = cur_dead_reckoning + cur_vxvy * cur_delta_t
 
             dead_reckoning.append(cur_dead_reckoning)
 
         if SAVE_VIDEO:
             save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_reckoning, ii,
-                             noised_car_w_coordinates_m, result_dir_timed, total_est_meu, total_time_pass)
+                             noised_car_w_coordinates_m, result_dir_timed, total_est_meu, total_time_pass, 'Kalman')
 
     total_est_meu = np.array(total_est_meu)
     total_est_meu = np.vstack([np.array([0, 0, 0, 0]), total_est_meu])
