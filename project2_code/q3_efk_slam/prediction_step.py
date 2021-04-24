@@ -1,4 +1,5 @@
 import numpy as np
+from tools import normalize_angle
 
 
 def prediction_step(mu, sigma, u):
@@ -30,40 +31,42 @@ def prediction_step(mu, sigma, u):
     Fx = np.hstack([np.eye(3), np.zeros([3, mu.shape[0] - 3])])
     mu += Fx.T @ np.array([u['t'] * np.cos(prev_theta + u['r1']),
                            u['t'] * np.sin(prev_theta + u['r1']),
-                           u['r1'] + u['r2']])
+                           normalize_angle(u['r1'] + u['r2'])])
     mu[2] = normalize_angle(mu[2])
 
     # % TODO: Compute the 3x3 Jacobian Gx of the motion model
 
-    Gx = np.eye(3)
-    Gx[0, 2] = -u['t'] * np.sin(prev_theta + u['r1'])
-    Gx[1, 2] = u['t'] * np.cos(prev_theta + u['r1'])
+    # Gx = np.eye(3)
+    # Gx[0, 2] = -u['t'] * np.sin(prev_theta + u['r1'])
+    # Gx[1, 2] = u['t'] * np.cos(prev_theta + u['r1'])
 
-    G = np.vstack([np.hstack([Gx, np.zeros([3, n - 3])]), np.hstack([np.zeros([n - 3, 3]), np.eye(n - 3)])])
+    # G = np.vstack([np.hstack([Gx, np.zeros([3, n - 3])]), np.hstack([np.zeros([n - 3, 3]), np.eye(n - 3)])])
+    Gx = np.hstack([np.zeros([3,2]), np.vstack([-u['t']*np.sin(prev_theta + u['r1']), u['t'] * np.cos(prev_theta + u['r1']), 0])]);
+    G = np.eye(n) + Fx.T@Gx@Fx
 
     # % TODO: Compute the 3x3 Jacobian Rx of the motion model
-    sigma_rot1, sigma_t, sigma_rot2 = 0.1, 0.1, 0.1
+    sigma_rot1, sigma_t, sigma_rot2 = 0.1, 0.2, 0.1
     R_tilda = np.diag([sigma_rot1 ** 2, sigma_t ** 2, sigma_rot2 ** 2])
     V = np.zeros([3, 3])
     V[0, 0] = -u['t'] * np.sin(prev_theta + u['r1'])
     V[1, 0] = u['t'] * np.cos(prev_theta + u['r1'])
-    V[2, 0] = 1
+    V[2, 0] = 1.
     V[0, 1] = np.cos(prev_theta + u['r1'])
     V[1, 1] = np.sin(prev_theta + u['r1'])
-    V[2, 2] = 1
+    V[2, 2] = 1.
 
     Rx = V @ R_tilda @ V.T
 
     R = Fx.T @ Rx @ Fx
 
-    sigma = G @ sigma @ G.T + R
+    ''''''
+    # motionNoise = 0.1;
+    # R3 = np.array([[motionNoise, 0, 0],
+    # [0, motionNoise, 0],
+    # [0, 0, motionNoise / 10]])
+    # R2 = np.zeros_like(sigma)
+    # R2[0: 3, 0: 3] = R3
+    ''''''
+    sigma = G @ sigma @ G.T + R  # TODO: think about G and R
 
     return mu, sigma
-
-
-def normalize_angle(phi):
-    if phi > np.pi:
-        phi = phi - 2 * np.pi
-    if phi < -np.pi:
-        phi = phi + 2 * np.pi
-    return phi

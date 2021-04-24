@@ -12,8 +12,6 @@ def read_world(file_name):
     return np.array(landmarks)
 
 
-
-
 def read_data(file_name):
     '''
     % Reads the odometry and sensor readings from a file.
@@ -76,12 +74,31 @@ def read_data(file_name):
             a = 3
         elif type == 'SENSOR':
             cur_sensor = {
-                'id': float(arr[1]),
+                'id': int(arr[1]),
                 'range': float(arr[2]),
                 'bearing': float(arr[3])
             }
             cur_timestep['sensor'].append(cur_sensor)
             a = 3
-    data['timestep'].append(cur_timestep)
+    # data['timestep'].append(cur_timestep)
+    data['timestep'] = data['timestep'][1::]
     a = 3
     return data
+
+
+def normalize_angle(phi):
+    if phi > np.pi:
+        phi = phi - 2 * np.pi
+    if phi < -np.pi:
+        phi = phi + 2 * np.pi
+    return phi
+
+
+def normalize_all_bearings(z):
+    # % Go over the observations vector and normalize the bearings
+    # % The expected format of z is [range; bearing; range; bearing; ...]
+    # for i=2:2:length(z):
+    for ii in list(range(1, len(z), 2)):
+        z[ii] = normalize_angle(z[ii])
+    zNorm = z
+    return zNorm
