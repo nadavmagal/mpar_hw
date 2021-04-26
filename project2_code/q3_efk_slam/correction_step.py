@@ -51,7 +51,7 @@ def correction_step(mu, sigma, z, observedLandmarks, sigmot):
 
         # % TODO: Use the current estimate of the landmark pose
         # % to compute the corresponding expected measurement in expectedZ:
-        delta = mu[2 * landmarkId + 1: 2 * landmarkId + 3] - mu[1: 3]
+        delta = mu[2 * landmarkId + 1: 2 * landmarkId + 3] - mu[0: 2]
         q = delta.T @ delta
         expectedZ[2 * ii:2 * ii + 2] = [np.sqrt(q), normalize_angle(np.arctan2(delta[1], delta[0]) - mu[2])]
 

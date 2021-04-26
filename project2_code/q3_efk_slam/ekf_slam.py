@@ -169,8 +169,8 @@ def ekf_slam_func(data_path):
     plt.scatter(total_mu[:, 5], total_mu[:, 6], s=2, color='magenta', label='slam_lm')
 
     plt.legend()
-    # plt.xlim([-5, 15])
-    # plt.ylim([-5, 15])
+    plt.xlim([-5, 15])
+    plt.ylim([-5, 15])
     plt.show(block=False)
 
     a = 3
