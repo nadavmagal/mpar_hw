@@ -2,7 +2,7 @@ import numpy as np
 from tools import normalize_angle
 
 
-def prediction_step(mu, sigma, u):
+def prediction_step(mu, sigma, u, sigmot):
     a = 3
     '''
     % Updates the belief concerning the robot pose according to the motion model,
@@ -26,8 +26,10 @@ def prediction_step(mu, sigma, u):
     % Compute the predicted sigma after incorporating the motion
     sigma = G*sigma*G' + R;
     '''
+    sigma_rot1, sigma_t, sigma_rot2 = sigmot['sigma_rot1'], sigmot['sigma_t'], sigmot['sigma_rot2']
+
     m, n = sigma.shape
-    prev_theta = mu[2]
+    prev_theta = mu[2].copy()
     Fx = np.hstack([np.eye(3), np.zeros([3, mu.shape[0] - 3])])
     mu += Fx.T @ np.array([u['t'] * np.cos(prev_theta + u['r1']),
                            u['t'] * np.sin(prev_theta + u['r1']),
@@ -41,32 +43,30 @@ def prediction_step(mu, sigma, u):
     # Gx[1, 2] = u['t'] * np.cos(prev_theta + u['r1'])
 
     # G = np.vstack([np.hstack([Gx, np.zeros([3, n - 3])]), np.hstack([np.zeros([n - 3, 3]), np.eye(n - 3)])])
-    Gx = np.hstack([np.zeros([3,2]), np.vstack([-u['t']*np.sin(prev_theta + u['r1']), u['t'] * np.cos(prev_theta + u['r1']), 0])]);
+    Gx = np.hstack([np.zeros([3,2]), np.vstack([-u['t']*np.sin(prev_theta + u['r1']), u['t'] * np.cos(prev_theta + u['r1']), 0])])
     G = np.eye(n) + Fx.T@Gx@Fx
 
     # % TODO: Compute the 3x3 Jacobian Rx of the motion model
-    sigma_rot1, sigma_t, sigma_rot2 = 0.1, 0.2, 0.1
-    R_tilda = np.diag([sigma_rot1 ** 2, sigma_t ** 2, sigma_rot2 ** 2])
-    V = np.zeros([3, 3])
-    V[0, 0] = -u['t'] * np.sin(prev_theta + u['r1'])
-    V[1, 0] = u['t'] * np.cos(prev_theta + u['r1'])
-    V[2, 0] = 1.
-    V[0, 1] = np.cos(prev_theta + u['r1'])
-    V[1, 1] = np.sin(prev_theta + u['r1'])
-    V[2, 2] = 1.
+    if True:
+        R_tilda = np.diag([sigma_rot1 ** 2, sigma_t ** 2, sigma_rot2 ** 2])
+        V = np.zeros([3, 3])
+        V[0, 0] = -u['t'] * np.sin(prev_theta + u['r1'])
+        V[1, 0] = u['t'] * np.cos(prev_theta + u['r1'])
+        V[2, 0] = 1.
+        V[0, 1] = np.cos(prev_theta + u['r1'])
+        V[1, 1] = np.sin(prev_theta + u['r1'])
+        V[2, 2] = 1.
 
-    Rx = V @ R_tilda @ V.T
+        Rx = V @ R_tilda @ V.T
 
-    R = Fx.T @ Rx @ Fx
+        R = Fx.T @ Rx @ Fx
+    else:
+        R3 = np.array([[sigma_rot1, 0, 0],
+        [0, sigma_t, 0],
+        [0, 0, sigma_rot2 / 10]])
+        R = np.zeros_like(sigma)
+        R[0: 3, 0: 3] = R3
 
-    ''''''
-    # motionNoise = 0.1;
-    # R3 = np.array([[motionNoise, 0, 0],
-    # [0, motionNoise, 0],
-    # [0, 0, motionNoise / 10]])
-    # R2 = np.zeros_like(sigma)
-    # R2[0: 3, 0: 3] = R3
-    ''''''
     sigma = G @ sigma @ G.T + R  # TODO: think about G and R
 
     return mu, sigma

@@ -8,7 +8,7 @@ from frames_to_video import create_video
 from common import load_data, exract_data_vectors, get_maxe_rmse, save_video_frame
 
 ''' ========== Q2 - Extended kalman filter ========== '''
-SAVE_VIDEO = False
+SAVE_VIDEO = True
 
 
 class ExtendedKalmanFilter:
@@ -34,6 +34,7 @@ class ExtendedKalmanFilter:
         for ii in range(data_vec['car_w_coordinates_m'].shape[0]):
             if ii == 0:
                 continue
+            print(f'{ii}/{data_vec["car_w_coordinates_m"].shape[0]}')
             cur_car_coordinates = data_vec['car_w_coordinates_m'][ii]
             yaw = data_vec['yaw'][ii]
             vf = data_vec['vf'][ii]
@@ -96,8 +97,8 @@ class ExtendedKalmanFilter:
                 dead_reckoning.append(cur_dead_reckoning)
 
             if SAVE_VIDEO:
-                save_video_frame(save_video_dict['car_w_coordinates_m'], self.meu_t, self.sigma_t, dead_reckoning, ii,
-                                 save_video_dict['noised_car_w_coordinates_m'], save_video_dict['result_dir_timed'],
+                save_video_frame(save_video_dict['car_w_coordinates_m'][:ii,:], self.meu_t, self.sigma_t, dead_reckoning, ii,
+                                 save_video_dict['noised_car_w_coordinates_m'][:ii,:], save_video_dict['result_dir_timed'],
                                  total_meu, total_time_pass, 'EKF')
 
         total_meu = np.array(total_meu)

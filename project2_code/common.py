@@ -58,8 +58,8 @@ def save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_r
                 label='Kalman - CV')
     if total_time_pass > 5:
         if method=='Kalman':
-            cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), 4 * cur_est_sigma_t[0][0],
-                                  4 * cur_est_sigma_t[1][1],
+            cur_ellipse = Ellipse((cur_est_meu_t[0], cur_est_meu_t[1]), cur_est_sigma_t[0][0],
+                                  cur_est_sigma_t[1][1],
                                   np.rad2deg(np.arctan2(cur_est_meu_t[3], cur_est_meu_t[2])), edgecolor='green',
                                   fc='None', lw=2)
         elif method == 'EKF':
@@ -72,7 +72,7 @@ def save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_r
                     s=1, label='dead reckoning')
     ax0.legend()
     ax0.grid()
-    ax0.set_title(f'kalman filter - constant velocity - car trajectory - time={round(total_time_pass, 2)} sec')
+    ax0.set_title(f'{method} - car trajectory - time={round(total_time_pass, 2)} sec')
     ax0.set_xlabel('east [m]')
     ax0.set_ylabel('north [m]')
     ax1 = vid_axs[1]

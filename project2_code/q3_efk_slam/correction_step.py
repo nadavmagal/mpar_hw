@@ -2,7 +2,7 @@ import numpy as np
 from tools import normalize_angle, normalize_all_bearings
 
 
-def correction_step(mu, sigma, z, observedLandmarks):
+def correction_step(mu, sigma, z, observedLandmarks, sigmot):
     a = 3
     '''
     % Updates the belief, i. e., mu and sigma after observing landmarks, according to the sensor model
@@ -74,8 +74,7 @@ def correction_step(mu, sigma, z, observedLandmarks):
             H = np.vstack([H, Hi])
 
     # % TODO: Construct the sensor noise matrix Q
-    sigma_r_squar = 0.5
-    sigma_phi_squar = 0.3
+    sigma_r_squar, sigma_phi_squar = sigmot['sigma_r_squar'], sigmot['sigma_phi_squar']
     Q = np.diag([sigma_r_squar, sigma_phi_squar]*m)
     # % TODO: Compute the Kalman gain
     K = sigma @ H.T @ np.linalg.inv(H @ sigma @ H.T + Q)

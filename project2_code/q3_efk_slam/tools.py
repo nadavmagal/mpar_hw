@@ -80,8 +80,8 @@ def read_data(file_name):
             }
             cur_timestep['sensor'].append(cur_sensor)
             a = 3
-    # data['timestep'].append(cur_timestep)
-    data['timestep'] = data['timestep'][1::]
+    data['timestep'].append(cur_timestep)
+    # data['timestep'] = data['timestep'][1::]
     a = 3
     return data
 

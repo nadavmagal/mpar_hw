@@ -7,7 +7,7 @@ from frames_to_video import create_video
 import pandas as pd
 from common import load_data, exract_data_vectors, get_maxe_rmse, save_video_frame
 
-SAVE_VIDEO = False
+SAVE_VIDEO = True
 
 
 ''' ========== Q1 - kalman filter ========== '''
@@ -263,8 +263,8 @@ def kalman_constant_velocity(delta_time, noised_car_w_coordinates_m, sigma_0_vx,
             dead_reckoning.append(cur_dead_reckoning)
 
         if SAVE_VIDEO:
-            save_video_frame(car_w_coordinates_m, cur_est_meu_t, cur_est_sigma_t, dead_reckoning, ii,
-                             noised_car_w_coordinates_m, result_dir_timed, total_est_meu, total_time_pass, 'Kalman')
+            save_video_frame(car_w_coordinates_m[:ii,:], cur_est_meu_t, cur_est_sigma_t, dead_reckoning, ii,
+                             noised_car_w_coordinates_m[:ii,:], result_dir_timed, total_est_meu, total_time_pass, 'Kalman')
 
     total_est_meu = np.array(total_est_meu)
     total_est_meu = np.vstack([np.array([0, 0, 0, 0]), total_est_meu])
