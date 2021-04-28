@@ -24,9 +24,15 @@ from matplotlib import pyplot as plt
 from q3_efk_slam.tools import *
 from q3_efk_slam.prediction_step import prediction_step
 from q3_efk_slam.correction_step import correction_step
+import copy
+from common import get_maxe_rmse, save_video_frame
+import time
+
+SAVE_VIDEO = True
+vid_fig_slam, vid_axs_slam = plt.subplots(1, 1, figsize=[15, 10], dpi=300)
 
 
-def get_gt(data):
+def get_trajectory(data):
     total_gt = []
     cur_gt = np.array([0., 0., 0.])
     total_gt.append(cur_gt.copy())
@@ -44,28 +50,49 @@ def get_gt(data):
     return total_gt
 
 
-def ekf_slam_func(data_path):
+def ekf_slam_func(data_path, result_dir_timed):
     # % Read world data, i.e. landmarks. The true landmark positions are not given to the robot
     landmarks = read_world(os.path.join(data_path, 'world.dat'))
 
     # % load landmarks;
     # % Read sensor readings, i.e. odometry and range-bearing sensor
-    data = read_data(os.path.join(data_path, 'sensor_data.dat'))
-    gt_xytheta = get_gt(data)
-    if False:
+    noise = {
+        'sigme_rot1': 0,
+        'sigme_t': 0,
+        'sigme_rot2': 0}
+    gt_data = read_data(os.path.join(data_path, 'sensor_data.dat'), noise)
+
+    # noise = {
+    #     'sigme_rot1': 0.1,
+    #     'sigme_t': 0.2,
+    #     'sigme_rot2': 0.1}
+    noise = {
+        'sigme_rot1': 0.1,
+        'sigme_t': 0.2,
+        'sigme_rot2': 0.1}
+    noised_data = read_data(os.path.join(data_path, 'sensor_data.dat'), noise)
+    gt_xytheta = get_trajectory(gt_data)
+    noised_xytheta = get_trajectory(noised_data)
+    if True:
         plt.figure()
         plt.subplot(3, 1, 1)
-        plt.plot([cur_timestep['odometry']['r1'] for cur_timestep in data['timestep']])
+        plt.plot([cur_timestep['odometry']['r1'] for cur_timestep in gt_data['timestep']])
 
         plt.subplot(3, 1, 2)
-        plt.plot([cur_timestep['odometry']['r2'] for cur_timestep in data['timestep']])
+        plt.plot([cur_timestep['odometry']['r2'] for cur_timestep in gt_data['timestep']])
 
         plt.subplot(3, 1, 3)
-        plt.plot([cur_timestep['odometry']['t'] for cur_timestep in data['timestep']])
+        plt.plot([cur_timestep['odometry']['t'] for cur_timestep in gt_data['timestep']])
 
         plt.figure()
-        plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1])
-        plt.scatter(landmarks[:, 1], landmarks[:, 2], s=3, color='black')
+        plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], color='black', s=3, label='GT')
+        plt.scatter(noised_xytheta[:, 0], noised_xytheta[:, 1], color='red', s=3, label='noised')
+        plt.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='landmarkd')
+        plt.title('GT and noised trajectory ')
+        plt.xlabel('x [m]')
+        plt.ylabel('y [m]')
+        plt.grid()
+        plt.legend()
         plt.show(block=False)
 
     INF = 1000
@@ -117,6 +144,8 @@ def ekf_slam_func(data_path):
     total_sigma = []
     total_mu.append(mu.copy())
     total_sigma.append(sigma.copy())
+    # data = gt_data
+    data = noised_data
     for t in range(len(data['timestep'])):
         # % Perform the prediction step of the EKF
         a = 3
@@ -130,6 +159,19 @@ def ekf_slam_func(data_path):
         total_mu.append(mu.copy())
         total_sigma.append(sigma.copy())
 
+        if SAVE_VIDEO:
+            total_mu_arr = np.array(total_mu)
+            plt.figure(vid_fig_slam)
+            ax0 = vid_axs_slam
+            ax0.clear()
+            ax0.scatter(gt_xytheta[:t, 0], gt_xytheta[:t, 1], s=1, color='black', label='GT')
+            ax0.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='landmarkd')
+            plt.scatter(total_mu_arr[:, 0], total_mu_arr[:, 1], s=2, color='blue', label='slam_tr')
+
+
+            ax0.legend()
+            ax0.grid()
+
         if False:
             plt.figure()
             total_mu = np.array(total_mu)
@@ -142,7 +184,7 @@ def ekf_slam_func(data_path):
             plt.text(total_mu[-1, 5], total_mu[-1, 6], '2 s', color='magenta')
 
             plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], s=2, color='black', label='gt')
-            plt.scatter(landmarks[:, 1], landmarks[:, 2], s=4, color='black', label='gt_lm')
+            plt.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='gt_lm')
             plt.text(landmarks[0, 1], landmarks[0, 2], '1 g')
             plt.text(landmarks[1, 1], landmarks[1, 2], '2 g')
 
@@ -158,19 +200,34 @@ def ekf_slam_func(data_path):
     total_mu = np.array(total_mu)
     total_sigma = np.array(total_sigma)
 
+    max_E, rmse = get_maxe_rmse(gt_xytheta, total_mu)
+
+    if False:
+        plt.figure()
+        plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], s=2, color='black', label='gt')
+        plt.scatter(landmarks[:, 1], landmarks[:, 2], s=4, color='black', label='gt_lm')
+        plt.text(landmarks[0, 1], landmarks[0, 2], '1 g')
+        plt.text(landmarks[1, 1], landmarks[1, 2], '2 g')
+
+        plt.scatter(total_mu[:, 0], total_mu[:, 1], s=2, marker='x', color='blue', label='slam_tr')
+        plt.scatter(total_mu[:, 3], total_mu[:, 4], s=2, color='orange', label='slam_lm')
+        plt.scatter(total_mu[:, 5], total_mu[:, 6], s=2, color='magenta', label='slam_lm')
+
+        plt.legend()
+        plt.xlim([-5, 15])
+        plt.ylim([-5, 15])
+        plt.show(block=False)
+
     plt.figure()
-    plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], s=2, color='black', label='gt')
-    plt.scatter(landmarks[:, 1], landmarks[:, 2], s=4, color='black', label='gt_lm')
-    plt.text(landmarks[0, 1], landmarks[0, 2], '1 g')
-    plt.text(landmarks[1, 1], landmarks[1, 2], '2 g')
-
-    plt.scatter(total_mu[:, 0], total_mu[:, 1], s=2,marker='x', color='blue', label='slam_tr')
-    plt.scatter(total_mu[:, 3], total_mu[:, 4], s=2, color='orange', label='slam_lm')
-    plt.scatter(total_mu[:, 5], total_mu[:, 6], s=2, color='magenta', label='slam_lm')
-
+    plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], color='black', s=3, label='GT')
+    plt.scatter(noised_xytheta[:, 0], noised_xytheta[:, 1], color='red', s=3, label='noised')
+    plt.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='landmarkd')
+    plt.scatter(total_mu[:, 0], total_mu[:, 1], s=2, color='blue', label='slam_tr')
+    plt.title(f'EKF-SLAM results - rmse={round(rmse, 2)}, maxE={round(max_E, 2)}')
+    plt.xlabel('x [m]')
+    plt.ylabel('y [m]')
+    plt.grid()
     plt.legend()
-    plt.xlim([-5, 15])
-    plt.ylim([-5, 15])
     plt.show(block=False)
 
     a = 3
@@ -178,8 +235,16 @@ def ekf_slam_func(data_path):
 
 def main():
     data_path = '/home/nadav/studies/mapping_and_perception_autonomous_robots/project_2/Ex3_verB'
-    ekf_slam_func(data_path)
+
+    result_dir = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_2/results'
+    cur_date_time = time.strftime("%Y.%m.%d-%H.%M")
+
+    result_dir_timed = os.path.join(result_dir, f'{cur_date_time}')
+    print(f'saving to: {result_dir_timed}')
+
+    ekf_slam_func(data_path, result_dir_timed)
 
 
 if __name__ == "__main__":
+    np.random.seed(333)
     main()

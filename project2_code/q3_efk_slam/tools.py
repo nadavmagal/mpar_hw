@@ -12,7 +12,7 @@ def read_world(file_name):
     return np.array(landmarks)
 
 
-def read_data(file_name):
+def read_data(file_name, noise=None):
     '''
     % Reads the odometry and sensor readings from a file.
     %
@@ -68,9 +68,9 @@ def read_data(file_name):
             cur_timestep = {
                 'odometry': dict(),
                 'sensor': []}
-            cur_timestep['odometry']['r1'] = float(arr[1])
-            cur_timestep['odometry']['t'] = float(arr[2])
-            cur_timestep['odometry']['r2'] = float(arr[3])
+            cur_timestep['odometry']['r1'] = float(arr[1]) + np.random.normal(0, noise['sigme_rot1'], 1)[0]
+            cur_timestep['odometry']['t'] = float(arr[2])+ np.random.normal(0, noise['sigme_t'], 1)[0]
+            cur_timestep['odometry']['r2'] = float(arr[3])+ np.random.normal(0, noise['sigme_rot2'], 1)[0]
             a = 3
         elif type == 'SENSOR':
             cur_sensor = {

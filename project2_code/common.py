@@ -39,7 +39,7 @@ def exract_data_vectors(data):
 
 
 def get_maxe_rmse(car_w_coordinates_m, total_est_meu):
-    ex_ey = car_w_coordinates_m[100:, :] - total_est_meu[100:, 0:2]
+    ex_ey = car_w_coordinates_m[100:, 0:2] - total_est_meu[100:, 0:2]
     max_E = np.max(np.sum(np.abs(ex_ey[100:, :]), axis=1))
     rmse = np.sqrt(np.sum(np.power(ex_ey, 2)) / total_est_meu.shape[0])
     return max_E, rmse
