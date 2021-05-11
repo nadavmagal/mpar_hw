@@ -1,8 +1,8 @@
 def read_world(filename):
     # Reads the world definition and returns a list of landmarks, our 'map'.
-    # 
+    # .
     # The returned dict contains a list of landmarks each with the
-    # following information: {id, [x, y]}.
+    # following information: {id, [x, y]}
 
     landmarks = dict()
 
