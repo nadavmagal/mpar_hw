@@ -59,3 +59,6 @@ class DatasetReaderKITTI:
 
     def getDatasetPath(self):
         return self._datasetPath
+
+    def getNumberFrames(self):
+        return self._numFrames

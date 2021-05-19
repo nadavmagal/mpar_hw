@@ -1,19 +1,53 @@
+import time
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import pykitti
 from visual_odometry.kitti_reader import DatasetReaderKITTI
+from frames_to_video import create_video
+
+CREATE_VIDEO = True
+if CREATE_VIDEO:
+    frame_fig = plt.figure(figsize=[15, 10])
 
 
-def drawFrameFeatures(frame, prevPts, currPts, frameIdx):
+def show_frame(cur_frame, cur_points, gt_coordinated, ii, prev_points, track_coordinates, result_dir_timed):
+
+    if CREATE_VIDEO:
+        plt.figure(frame_fig)
+        plt.clf()
+        plt.subplot(1,2,1)
+        plt.plot(track_coordinates[:, 0], track_coordinates[:, 2], c='black', label="VO")
+        plt.plot(gt_coordinated[:, 0], gt_coordinated[:, 2], c='blue', label="Ground truth")
+        plt.title("GT and estimated trajectory")
+        plt.legend()
+        plt.draw()
+
+        plt.subplot(1,2,2)
+        currFrameRGB = cv2.cvtColor(cur_frame, cv2.COLOR_GRAY2RGB)
+        for i in range(len(cur_points) - 1):
+            cv2.circle(currFrameRGB, tuple(cur_points[i].astype(np.int)), radius=3, color=(200, 100, 0))
+            cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(np.int)),
+                     color=(200, 100, 0))
+        plt.imshow(currFrameRGB)
+        plt.title("image and features")
+
+        os.makedirs(result_dir_timed, exist_ok=True)
+        plt.savefig(os.path.join(result_dir_timed, f'{ii}.png'), dpi=150)
+    else:
+        updateTrajectoryDrawing(track_coordinates, gt_coordinated)
+        drawFrameFeatures(cur_frame, prev_points, cur_points, ii)
+
+def drawFrameFeatures(frame, prev_points, cur_points, frame_index):
     currFrameRGB = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
-    for i in range(len(currPts) - 1):
-        cv2.circle(currFrameRGB, tuple(currPts[i].astype(np.int)), radius=3, color=(200, 100, 0))
-        cv2.line(currFrameRGB, tuple(prevPts[i].astype(np.int)), tuple(currPts[i].astype(np.int)), color=(200, 100, 0))
-        cv2.putText(currFrameRGB, "Frame: {}".format(frameIdx), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+    for i in range(len(cur_points) - 1):
+        cv2.circle(currFrameRGB, tuple(cur_points[i].astype(np.int)), radius=3, color=(200, 100, 0))
+        cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(np.int)), color=(200, 100, 0))
+        cv2.putText(currFrameRGB, "Frame: {}".format(frame_index), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (200, 200, 200))
-        cv2.putText(currFrameRGB, "Features: {}".format(len(currPts)), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+        cv2.putText(currFrameRGB, "Features: {}".format(len(cur_points)), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (200, 200, 200))
     cv2.imshow("Frame with keypoints", currFrameRGB)
 
@@ -21,10 +55,10 @@ def drawFrameFeatures(frame, prevPts, currPts, frameIdx):
 #
 # @param trackedPoints
 # @param groundtruthPoints
-def updateTrajectoryDrawing(trackedPoints, groundtruthPoints):
+def updateTrajectoryDrawing(track_coordinates, gt_coordinated):
     plt.cla()
-    plt.plot(trackedPoints[:, 0], trackedPoints[:, 2], c='blue', label="Tracking")
-    plt.plot(groundtruthPoints[:, 0], groundtruthPoints[:, 2], c='green', label="Ground truth")
+    plt.plot(track_coordinates[:, 0], track_coordinates[:, 2], c='blue', label="Tracking")
+    plt.plot(gt_coordinated[:, 0], gt_coordinated[:, 2], c='green', label="Ground truth")
     plt.title("Trajectory")
     plt.legend()
     plt.draw()
@@ -50,19 +84,20 @@ def find_features_in_cur_frame(prev_frame, cur_frame, prev_points):
     return prev_points, cur_points
 
 
-def monocular_visual_odometry(data_path):
+def monocular_visual_odometry(data_path, result_dir_timed):
     dataset_reader = DatasetReaderKITTI(data_path)
     intrinsic_matrix = dataset_reader.readCameraMatrix()
     feature_detector = cv2.GFTTDetector_create()
 
     prev_points = np.array([])
     prev_frame_3 = dataset_reader.readFrame(0)
-    kitti_positions, track_positions = [], []
+    gt_coordinated, track_coordinates = [], []
     vo_rotation = np.eye(3)
     vo_position = np.zeros(3)
-    plt.show()
+    plt.figure()
+    # plt.show()
 
-    for ii in range(1, 250):
+    for ii in range(1, dataset_reader.getNumberFrames()):
         cur_frame_3 = dataset_reader.readFrame(ii)
         prev_frame = cv2.cvtColor(prev_frame_3, cv2.COLOR_BGR2GRAY)
         cur_frame = cv2.cvtColor(cur_frame_3, cv2.COLOR_BGR2GRAY)
@@ -94,13 +129,16 @@ def monocular_visual_odometry(data_path):
 
         gt_position, dl = dataset_reader.readGroundtuthPosition(ii)
 
-        vo_position = vo_position + vo_rotation.dot(T)
+        if False:
+            vo_position = vo_position + (dl * vo_rotation @ T).T
+        else:
+            vo_position = vo_position + np.squeeze(vo_rotation.dot(T).T)
+
         vo_rotation = R.dot(vo_rotation)
 
-        kitti_positions.append(gt_position)
-        track_positions.append(vo_position)
-        updateTrajectoryDrawing(np.array(track_positions), np.array(kitti_positions))
-        drawFrameFeatures(cur_frame, prev_points, cur_points, ii)
+        gt_coordinated.append(gt_position)
+        track_coordinates.append(vo_position)
+        show_frame(cur_frame, cur_points, np.array(gt_coordinated), ii, prev_points, np.array(track_coordinates), result_dir_timed)
 
         if cv2.waitKey(1) == ord('q'):
             break
@@ -125,7 +163,17 @@ def main():
     # my_dataset = '09'
     # my_dataset = '10'
     data_path = f'/home/nadav/studies/mapping_and_perception_autonomous_robots/kitti_data/visual_odometry/dataset/sequences/{my_dataset}'
-    monocular_visual_odometry(data_path)
+
+    result_dir = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_3/results/vo'
+    cur_date_time = time.strftime("%Y.%m.%d-%H.%M")
+
+    result_dir_timed = os.path.join(result_dir, f'{cur_date_time}')
+    print(f'saving to: {result_dir_timed}')
+
+
+    monocular_visual_odometry(data_path, result_dir_timed)
+    if CREATE_VIDEO:
+        create_video(result_dir_timed)
 
 
 if __name__ == "__main__":
