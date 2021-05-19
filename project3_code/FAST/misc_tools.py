@@ -1,5 +1,6 @@
-
 import math
+import time
+import os
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import numpy as np
@@ -39,13 +40,14 @@ def error_ellipse(position, sigma):
 
     return error_ellipse
 
-def plot_state(particles, landmarks):
+def plot_state(particles, landmarks, timestep):
     # Visualizes the state of the particle filter.
     #
     # Displays the particle cloud, mean position and 
     # estimated mean landmark positions and covariances.
 
-    draw_mean_landmark_poses = False
+    draw_mean_landmark_poses = True
+    SAVE_FIG = True
 
     map_limits = [-1, 12, 0, 10]
     
@@ -75,6 +77,8 @@ def plot_state(particles, landmarks):
         ly.append(landmarks[i+1][1])
 
     # best particle
+    if False:
+        weights = np.array([cur_p['weight'] for cur_p in particles])
     estimated = best_particle(particles)
     robot_x = estimated['x']
     robot_y = estimated['y']
@@ -117,6 +121,12 @@ def plot_state(particles, landmarks):
     
     plt.axis(map_limits)
     plt.pause(0.01)
+    if SAVE_FIG:
+        cur_date_time = time.strftime("%Y.%m.%d-%H.%M")
+        save_path = f'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_3/results/{cur_date_time}'
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(os.path.join(save_path, f'{timestep}.png'), dpi=150)
+    a=3
 
 def best_particle(particles):
     #find particle with highest weight 
