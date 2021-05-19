@@ -50,9 +50,9 @@ class DatasetReaderKITTI:
                 map(float, lines[frameId - 1].rstrip().split(" ")))
 
             position = (tx, ty, tz)
-            scale = sqrt((tx - tx_prev) ** 2 + (ty - ty_prev) ** 2 + (tz - tz_prev) ** 2)
+            dl = sqrt((tx - tx_prev) ** 2 + (ty - ty_prev) ** 2 + (tz - tz_prev) ** 2)
 
-            return position, scale
+            return position, dl
 
     def getFramesCount(self):
         return self._numFrames

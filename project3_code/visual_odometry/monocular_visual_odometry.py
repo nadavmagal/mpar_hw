@@ -92,11 +92,9 @@ def monocular_visual_odometry(data_path):
 
         _, R, T, _ = cv2.recoverPose(E, cur_points, prev_points, intrinsic_matrix)
 
-        gt_position, gt_scale = dataset_reader.readGroundtuthPosition(ii)
-        if gt_scale <= 0.1:
-            continue
-        # gt_scale = 1
-        vo_position = vo_position + gt_scale * vo_rotation.dot(T)
+        gt_position, dl = dataset_reader.readGroundtuthPosition(ii)
+
+        vo_position = vo_position + vo_rotation.dot(T)
         vo_rotation = R.dot(vo_rotation)
 
         kitti_positions.append(gt_position)
