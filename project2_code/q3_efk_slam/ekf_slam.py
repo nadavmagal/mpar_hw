@@ -21,14 +21,17 @@
 import os
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.patches import Ellipse
+
 from q3_efk_slam.tools import *
 from q3_efk_slam.prediction_step import prediction_step
 from q3_efk_slam.correction_step import correction_step
 import copy
 from common import get_maxe_rmse, save_video_frame
 import time
+from frames_to_video import create_video
 
-SAVE_VIDEO = True
+SAVE_VIDEO = False
 vid_fig_slam, vid_axs_slam = plt.subplots(1, 1, figsize=[15, 10], dpi=300)
 
 
@@ -148,7 +151,7 @@ def ekf_slam_func(data_path, result_dir_timed):
     data = noised_data
     for t in range(len(data['timestep'])):
         # % Perform the prediction step of the EKF
-        a = 3
+        print(f'{t}/{len(data["timestep"])}')
 
         mu, sigma = prediction_step(mu.copy(), sigma.copy(), data['timestep'][t]['odometry'], sigmot)
 
@@ -168,9 +171,30 @@ def ekf_slam_func(data_path, result_dir_timed):
             ax0.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='landmarkd')
             plt.scatter(total_mu_arr[:, 0], total_mu_arr[:, 1], s=2, color='blue', label='slam_tr')
 
+            # ellipse for robot
+            cur_ellipse = Ellipse((mu[0], mu[1]), sigma[0][0], sigma[1][1],
+                                  np.rad2deg(mu[2]), edgecolor='green',
+                                  fc='None', lw=1)
+            ax0.add_patch(cur_ellipse)
 
+            for kk, is_observed in enumerate(observedLandmarks):
+                if is_observed == False:
+                    continue
+                ax0.scatter(landmarks[kk, 1], landmarks[kk, 2], s=5, color='orange', marker='<')
+                cur_ellipse = Ellipse((mu[2 * kk + 3], mu[2 * kk + 4]), sigma[2 * kk + 3][2 * kk + 3],
+                                      sigma[2 * kk + 4][2 * kk + 4],
+                                      np.rad2deg(0), edgecolor='orange', fc='None', lw=1)
+                ax0.add_patch(cur_ellipse)
+
+                a = 3
+
+            plt.xlim([-5, 15])
+            plt.ylim([-5, 15])
             ax0.legend()
             ax0.grid()
+
+            image_path = os.path.join(result_dir_timed, f'{t}.png')
+            vid_fig_slam.savefig(image_path, dpi=150)
 
         if False:
             plt.figure()
@@ -202,35 +226,110 @@ def ekf_slam_func(data_path, result_dir_timed):
 
     max_E, rmse = get_maxe_rmse(gt_xytheta, total_mu)
 
-    if False:
-        plt.figure()
-        plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], s=2, color='black', label='gt')
-        plt.scatter(landmarks[:, 1], landmarks[:, 2], s=4, color='black', label='gt_lm')
-        plt.text(landmarks[0, 1], landmarks[0, 2], '1 g')
-        plt.text(landmarks[1, 1], landmarks[1, 2], '2 g')
-
-        plt.scatter(total_mu[:, 0], total_mu[:, 1], s=2, marker='x', color='blue', label='slam_tr')
-        plt.scatter(total_mu[:, 3], total_mu[:, 4], s=2, color='orange', label='slam_lm')
-        plt.scatter(total_mu[:, 5], total_mu[:, 6], s=2, color='magenta', label='slam_lm')
-
-        plt.legend()
-        plt.xlim([-5, 15])
-        plt.ylim([-5, 15])
-        plt.show(block=False)
-
     plt.figure()
     plt.scatter(gt_xytheta[:, 0], gt_xytheta[:, 1], color='black', s=3, label='GT')
-    plt.scatter(noised_xytheta[:, 0], noised_xytheta[:, 1], color='red', s=3, label='noised')
+    # plt.scatter(noised_xytheta[:, 0], noised_xytheta[:, 1], color='red', s=3, label='noised')
     plt.scatter(landmarks[:, 1], landmarks[:, 2], s=5, color='black', marker='<', label='landmarkd')
     plt.scatter(total_mu[:, 0], total_mu[:, 1], s=2, color='blue', label='slam_tr')
     plt.title(f'EKF-SLAM results - rmse={round(rmse, 2)}, maxE={round(max_E, 2)}')
     plt.xlabel('x [m]')
     plt.ylabel('y [m]')
+    plt.xlim([-5, 15])
+    plt.ylim([-5, 15])
     plt.grid()
     plt.legend()
     plt.show(block=False)
 
+    ''' plot cov relations '''
+    diff_from_gt = gt_xytheta - total_mu[:, 0:3]
+    diff_theta = np.where(diff_from_gt[:, 2] < -np.pi, diff_from_gt[:, 2] + 2 * np.pi, diff_from_gt[:, 2])
+
+    plt.figure()
+    plt.subplot(3, 1, 1)
+    plt.plot(diff_from_gt[:, 0], label='error in x [m]')
+    plt.plot(np.sqrt(total_sigma[:, 0, 0]), color='red', label='sigma x')
+    plt.plot(-np.sqrt(total_sigma[:, 0, 0]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('x error [m] and x variance')
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(3, 1, 2)
+    plt.plot(diff_from_gt[:, 1], label='error in y [m]')
+    plt.plot(np.sqrt(total_sigma[:, 1, 1]), color='red', label='sigma y')
+    plt.plot(-np.sqrt(total_sigma[:, 1, 1]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('y error [m] and y variance')
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(3, 1, 3)
+    plt.plot(diff_theta, label='error in theta [m]')
+    plt.plot(np.sqrt(total_sigma[:, 2, 2]), color='red', label='sigma theta')
+    plt.plot(-np.sqrt(total_sigma[:, 2, 2]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('theta error [m] and theta variance')
+    plt.legend()
+    plt.grid()
+
+    plt.show(block=False)
+
+    plt.figure()
+    plt.imshow(sigma)
+    plt.title('Covariance matrix')
+    plt.show(block=False)
+
+
+    # plot of landmard sigmot
+    error_lm1 = landmarks[0,1:3] - total_mu[:,3:5]
+    plt.figure()
+    plt.subplot(2, 1, 1)
+    plt.title('Landmark 1 - error and std')
+    plt.plot(error_lm1[:,0], label='error in x [m]')
+    plt.plot(np.sqrt(total_sigma[:, 3,3 ]), color='red', label='sigma x')
+    plt.plot(-np.sqrt(total_sigma[:, 3, 3]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('x error [m] and x variance')
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(error_lm1[:, 1], label='error in y [m]')
+    plt.plot(np.sqrt(total_sigma[:, 4, 4]), color='red', label='sigma y')
+    plt.plot(-np.sqrt(total_sigma[:, 4, 4]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('y error [m] and y variance')
+    plt.legend()
+    plt.grid()
+
+    plt.show(block=False)
+
+    error_lm2 = landmarks[1, 1:3] - total_mu[:, 5:7]
+    plt.figure()
+    plt.subplot(2, 1, 1)
+    plt.title('Landmark 2 - error and std')
+    plt.plot(error_lm2[:, 0], label='error in x [m]')
+    plt.plot(np.sqrt(total_sigma[:, 5, 5]), color='red', label='sigma x')
+    plt.plot(-np.sqrt(total_sigma[:, 5, 5]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('x error [m] and x variance')
+    plt.legend()
+    plt.grid()
+
+    plt.subplot(2, 1, 2)
+    plt.plot(error_lm2[:, 1], label='error in y [m]')
+    plt.plot(np.sqrt(total_sigma[:, 6, 6]), color='red', label='sigma y')
+    plt.plot(-np.sqrt(total_sigma[:, 6, 6]), color='red')
+    plt.xlabel('sample number')
+    plt.ylabel('y error [m] and y variance')
+    plt.legend()
+    plt.grid()
+
+    plt.show(block=False)
+
     a = 3
+
+
 
 
 def main():
@@ -241,8 +340,11 @@ def main():
 
     result_dir_timed = os.path.join(result_dir, f'{cur_date_time}')
     print(f'saving to: {result_dir_timed}')
+    os.makedirs(result_dir_timed, exist_ok=True)
 
     ekf_slam_func(data_path, result_dir_timed)
+    if SAVE_VIDEO:
+        create_video(result_dir_timed)
 
 
 if __name__ == "__main__":
