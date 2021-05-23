@@ -70,8 +70,8 @@ def sample_motion_model(odometry, particles):
     delta_rot2 = odometry['r2']
 
     # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
-    sigma_rot1, sigma_trans, sigma_rot2 = [0.01, 0.02, 0.01]
-    # sigma_rot1, sigma_trans, sigma_rot2 = [0.0, 0.0, 0.0]  # TODO add noise
+    # sigma_rot1, sigma_trans, sigma_rot2 = [0.01, 0.02, 0.01]
+    sigma_rot1, sigma_trans, sigma_rot2 = [0.0, 0.0, 0.0]  # TODO add noise
 
     '''your code here'''
     for cur_particle in particles:
@@ -122,18 +122,16 @@ def eval_sensor_model(sensor_data, particles):
     # calculate particle weight
 
     # sensor noise
-    Q_t = np.array([[0.1, 0], \
+    Q_t = np.array([[0.1, 0],
                     [0, 0.1]])
-    # Q_t = np.array([[1, 0], \
-    #                 [0, 0.1]])
-    # Q_t = np.eye(2)
+    Q_t = np.diag([1,0.1])
 
     # measured landmark ids and ranges
     ids = sensor_data['id']
     ranges = sensor_data['range']
     bearings = sensor_data['bearing']
 
-    if True:
+    if False:
         print('######################################')
         for cur_id, cur_range, cur_bearing in zip(ids, ranges, bearings):
             print(f'id={cur_id}, range={round(cur_range, 2)}, bearing={round(np.rad2deg(cur_bearing), 2)}')
@@ -180,24 +178,24 @@ def eval_sensor_model(sensor_data, particles):
                 # provided function 'measurement_model' above. 
                 # calculate particle weight: particle['weight'] = ...
                 '''your code here'''
-                print(lm_id)
                 h, H = measurement_model(particle, landmark)
                 H_ = H
                 lmsigma_ = landmark['sigma']
-                Q = H @ landmark['sigma'] * H.T + Q_t
+                Q = H @ landmark['sigma'] @ H.T + Q_t
+
                 K = landmark['sigma'] @ H.T @ np.linalg.inv(Q)
 
-                diff = np.array([meas_range, meas_bearing]) - h
+                # diff = np.array([meas_range, meas_bearing]) - h
+                h[1] = get_normalized_angle(h[1])
+                diff = np.array([meas_range-h[0], angle_diff(meas_bearing, h[1])])
+
+
                 # diff = -diff
                 diff[1] = get_normalized_angle(diff[1])
                 landmark['mu'] = landmark['mu'] + K @ diff
                 landmark['sigma'] = (np.eye(2) - K @ H) @ landmark['sigma']
 
-                # particle['weight'] = particle['weight'] * (1 / np.sqrt(np.linalg.det(2 * np.pi * Q))) * np.exp(
-                #     -0.5 * diff.T @ np.linalg.inv(Q) @ diff)
-                # cur_particle_weight = ((abs(np.linalg.det(2*np.pi*Q)))**(-0.5))*np.exp(-0.5*diff.T@np.linalg.inv(Q)@diff)
-                # cur_particle_weight = ((np.linalg.det(2*np.pi*Q))**(-0.5))*np.exp(-0.5*diff.T@np.linalg.inv(Q)@diff)
-                cur_particle_weight = (1 / np.sqrt(2 * np.pi * np.linalg.norm(Q))) * np.exp(
+                cur_particle_weight = (1 / np.sqrt(np.linalg.det(2 * np.pi*Q))) * np.exp(
                     -0.5 * diff.T @ np.linalg.inv(Q) @ diff)
 
                 if np.isnan(cur_particle_weight):

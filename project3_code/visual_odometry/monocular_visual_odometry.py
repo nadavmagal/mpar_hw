@@ -14,22 +14,23 @@ if CREATE_VIDEO:
 
 
 def show_frame(cur_frame, cur_points, gt_coordinated, ii, prev_points, track_coordinates, result_dir_timed):
-
     if CREATE_VIDEO:
         plt.figure(frame_fig)
         plt.clf()
-        plt.subplot(1,2,1)
+        plt.subplot(1, 2, 1)
         plt.plot(track_coordinates[:, 0], track_coordinates[:, 2], c='black', label="VO")
         plt.plot(gt_coordinated[:, 0], gt_coordinated[:, 2], c='blue', label="Ground truth")
         plt.title("GT and estimated trajectory")
+        plt.xlabel('x [m]')
+        plt.ylabel('y [m]')
         plt.legend()
         plt.draw()
 
-        plt.subplot(1,2,2)
+        plt.subplot(1, 2, 2)
         currFrameRGB = cv2.cvtColor(cur_frame, cv2.COLOR_GRAY2RGB)
         for i in range(len(cur_points) - 1):
             cv2.circle(currFrameRGB, tuple(cur_points[i].astype(np.int)), radius=3, color=(200, 100, 0))
-            cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(np.int)),
+            cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(int)),
                      color=(200, 100, 0))
         plt.imshow(currFrameRGB)
         plt.title("image and features")
@@ -40,11 +41,13 @@ def show_frame(cur_frame, cur_points, gt_coordinated, ii, prev_points, track_coo
         updateTrajectoryDrawing(track_coordinates, gt_coordinated)
         drawFrameFeatures(cur_frame, prev_points, cur_points, ii)
 
+
 def drawFrameFeatures(frame, prev_points, cur_points, frame_index):
     currFrameRGB = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
     for i in range(len(cur_points) - 1):
         cv2.circle(currFrameRGB, tuple(cur_points[i].astype(np.int)), radius=3, color=(200, 100, 0))
-        cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(np.int)), color=(200, 100, 0))
+        cv2.line(currFrameRGB, tuple(prev_points[i].astype(np.int)), tuple(cur_points[i].astype(np.int)),
+                 color=(200, 100, 0))
         cv2.putText(currFrameRGB, "Frame: {}".format(frame_index), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                     (200, 200, 200))
         cv2.putText(currFrameRGB, "Features: {}".format(len(cur_points)), (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
@@ -61,6 +64,8 @@ def updateTrajectoryDrawing(track_coordinates, gt_coordinated):
     plt.plot(gt_coordinated[:, 0], gt_coordinated[:, 2], c='green', label="Ground truth")
     plt.title("Trajectory")
     plt.legend()
+    plt.xlabel('x [m]')
+    plt.ylabel('y [m]')
     plt.draw()
     plt.pause(0.01)
 
@@ -102,25 +107,30 @@ def monocular_visual_odometry(data_path, result_dir_timed):
         prev_frame = cv2.cvtColor(prev_frame_3, cv2.COLOR_BGR2GRAY)
         cur_frame = cv2.cvtColor(cur_frame_3, cv2.COLOR_BGR2GRAY)
 
-        prev_points = feature_detector.detect(prev_frame)
-        prev_points = cv2.KeyPoint_convert(sorted(prev_points, key=lambda p: p.response, reverse=True))
+        if False:
+            prev_points = feature_detector.detect(prev_frame)
+            prev_points = cv2.KeyPoint_convert(sorted(prev_points, key=lambda p: p.response, reverse=True))
+            prev_points = prev_points[0:500, :]
+        else:
+            sift = cv2.SIFT_create()
+            kp, des = sift.detectAndCompute(prev_frame, None)
+            prev_points = cv2.KeyPoint_convert(sorted(kp, key=lambda p: p.response, reverse=True))
 
         prev_points, cur_points = find_features_in_cur_frame(prev_frame, cur_frame, prev_points)
 
         if False:
             plt.figure()
             plt.subplot(2, 1, 1)
-            plt.imshow(prev_frame)
+            plt.imshow(prev_frame, cmap='gray')
             plt.scatter(prev_points[:, 0], prev_points[:, 1], color='red', marker='+', s=1)
             plt.title('prev frame')
 
             plt.subplot(2, 1, 2)
-            plt.imshow(cur_frame)
+            plt.imshow(cur_frame, cmap='gray')
             plt.scatter(cur_points[:, 0], cur_points[:, 1], color='red', marker='+', s=1)
             plt.title('cur_points')
             plt.show(block=False)
 
-        # Essential matrix, pose estimation
         E, mask = cv2.findEssentialMat(cur_points, prev_points, intrinsic_matrix, cv2.RANSAC, 0.99, 1.0, None)
         prev_points = prev_points[np.squeeze(mask).astype(bool)]
         cur_points = cur_points[np.squeeze(mask).astype(bool)]
@@ -129,16 +139,14 @@ def monocular_visual_odometry(data_path, result_dir_timed):
 
         gt_position, dl = dataset_reader.readGroundtuthPosition(ii)
 
-        if False:
-            vo_position = vo_position + (dl * vo_rotation @ T).T
-        else:
-            vo_position = vo_position + np.squeeze(vo_rotation.dot(T).T)
+        vo_position = vo_position + np.squeeze((dl * vo_rotation @ T).T)
 
         vo_rotation = R.dot(vo_rotation)
 
         gt_coordinated.append(gt_position)
         track_coordinates.append(vo_position)
-        show_frame(cur_frame, cur_points, np.array(gt_coordinated), ii, prev_points, np.array(track_coordinates), result_dir_timed)
+        show_frame(cur_frame, cur_points, np.array(gt_coordinated), ii, prev_points, np.array(track_coordinates),
+                   result_dir_timed)
 
         if cv2.waitKey(1) == ord('q'):
             break
@@ -146,7 +154,17 @@ def monocular_visual_odometry(data_path, result_dir_timed):
         prev_points, prev_frame = cur_points, cur_frame
         prev_frame_3 = cur_frame_3
 
+    gt_coordinated = np.array(gt_coordinated)
+    track_coordinates = np.array(track_coordinates)
+
+    ex = track_coordinates[:, 0] - gt_coordinated[:, 0]
+    ey = track_coordinates[:, 2] - gt_coordinated[:, 2]
+    RMSE = np.sqrt(np.mean(np.power(ex, 2) + np.power(ey, 2)))
+
+    print(f'RMSE={RMSE}')
+
     cv2.destroyAllWindows()
+    plt.show()
     a = 3
 
 
@@ -157,7 +175,7 @@ def main():
     # my_dataset = '03'
     # my_dataset = '04' # bad
     # my_dataset = '05'
-    my_dataset = '06' # bad
+    my_dataset = '06'  # bad
     # my_dataset = '07'
     # my_dataset = '08' # bad
     # my_dataset = '09'
@@ -169,7 +187,6 @@ def main():
 
     result_dir_timed = os.path.join(result_dir, f'{cur_date_time}')
     print(f'saving to: {result_dir_timed}')
-
 
     monocular_visual_odometry(data_path, result_dir_timed)
     if CREATE_VIDEO:
