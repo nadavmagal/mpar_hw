@@ -46,7 +46,7 @@ def plot_state(particles, landmarks, timestep):
     # Displays the particle cloud, mean position and 
     # estimated mean landmark positions and covariances.
 
-    draw_mean_landmark_poses = True
+    draw_mean_landmark_poses = False
     SAVE_FIG = True
 
     map_limits = [-1, 12, 0, 10]

@@ -70,8 +70,8 @@ def sample_motion_model(odometry, particles):
     delta_rot2 = odometry['r2']
 
     # the motion noise parameters: [alpha1, alpha2, alpha3, alpha4]
-    # sigma_rot1, sigma_trans, sigma_rot2 = [0.01, 0.02, 0.01]
-    sigma_rot1, sigma_trans, sigma_rot2 = [0.0, 0.0, 0.0]  # TODO add noise
+    sigma_rot1, sigma_trans, sigma_rot2 = [0.01, 0.02, 0.01]
+    # sigma_rot1, sigma_trans, sigma_rot2 = [0.0, 0.0, 0.0]  # TODO add noise
 
     '''your code here'''
     for cur_particle in particles:
