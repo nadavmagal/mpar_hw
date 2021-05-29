@@ -40,7 +40,7 @@ def error_ellipse(position, sigma):
 
     return error_ellipse
 
-def plot_state(particles, landmarks, timestep):
+def plot_state(particles, landmarks, timestep, gt_trajectory, cur_date_time):
     # Visualizes the state of the particle filter.
     #
     # Displays the particle cloud, mean position and 
@@ -79,7 +79,7 @@ def plot_state(particles, landmarks, timestep):
     # best particle
     if False:
         weights = np.array([cur_p['weight'] for cur_p in particles])
-    estimated = best_particle(particles)
+    estimated = get_best_particle(particles)
     robot_x = estimated['x']
     robot_y = estimated['y']
     robot_theta = estimated['theta']
@@ -104,8 +104,11 @@ def plot_state(particles, landmarks, timestep):
         plt.plot(lxs, lys, 'b.')
 
     # estimated traveled path of best particle
-    plt.plot(hx, hy, 'r-')
-    
+    plt.plot(hx, hy, 'r-', label='history')
+
+    # plot_gt
+    hist_len = len(hx)
+    plt.plot(gt_trajectory[:hist_len, 0], gt_trajectory[:hist_len, 1], color='black', label='GT')
     # true landmark positions
     plt.plot(lx, ly, 'b+',markersize=10)
 
@@ -120,15 +123,18 @@ def plot_state(particles, landmarks, timestep):
     plt.quiver(robot_x, robot_y, np.cos(robot_theta), np.sin(robot_theta), angles='xy',scale_units='xy')
     
     plt.axis(map_limits)
+    plt.xlabel('x [m]')
+    plt.ylabel('y [m]')
+    plt.legend()
+
     plt.pause(0.01)
     if SAVE_FIG:
-        cur_date_time = time.strftime("%Y.%m.%d-%H.%M")
         save_path = f'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_3/results/fast_slam/{cur_date_time}'
         os.makedirs(save_path, exist_ok=True)
         plt.savefig(os.path.join(save_path, f'{timestep}.png'), dpi=150)
     a=3
 
-def best_particle(particles):
+def get_best_particle(particles):
     #find particle with highest weight 
 
     highest_weight = 0
@@ -141,3 +147,19 @@ def best_particle(particles):
             highest_weight = particle['weight']
 
     return best_particle
+
+def get_average_history(particles):
+    # find particle with highest weight
+
+    avg_particle = dict()
+
+    num_particles = len(particles)
+    total_history = []
+    for particle in particles:
+        cur_particle_history = np.array(particle['history'])
+        total_history.append(cur_particle_history)
+
+    total_history = np.array(total_history)
+    mean_history = np.mean(total_history, axis=0)
+
+    return mean_history

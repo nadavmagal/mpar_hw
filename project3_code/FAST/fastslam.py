@@ -122,9 +122,9 @@ def eval_sensor_model(sensor_data, particles):
     # calculate particle weight
 
     # sensor noise
-    Q_t = np.array([[0.1, 0],
-                    [0, 0.1]])
-    Q_t = np.diag([1,0.1])
+    # Q_t = np.array([[0.1, 0],
+    #                 [0, 0.1]])
+    Q_t = np.diag([1, 0.1])
 
     # measured landmark ids and ranges
     ids = sensor_data['id']
@@ -187,15 +187,14 @@ def eval_sensor_model(sensor_data, particles):
 
                 # diff = np.array([meas_range, meas_bearing]) - h
                 h[1] = get_normalized_angle(h[1])
-                diff = np.array([meas_range-h[0], angle_diff(meas_bearing, h[1])])
-
+                diff = np.array([meas_range - h[0], angle_diff(meas_bearing, h[1])])
 
                 # diff = -diff
                 diff[1] = get_normalized_angle(diff[1])
                 landmark['mu'] = landmark['mu'] + K @ diff
                 landmark['sigma'] = (np.eye(2) - K @ H) @ landmark['sigma']
 
-                cur_particle_weight = (1 / np.sqrt(np.linalg.det(2 * np.pi*Q))) * np.exp(
+                cur_particle_weight = (1 / np.sqrt(np.linalg.det(2 * np.pi * Q))) * np.exp(
                     -0.5 * diff.T @ np.linalg.inv(Q) @ diff)
 
                 if np.isnan(cur_particle_weight):
@@ -271,6 +270,7 @@ def get_odometry_trajectory(sensor_readings):
 
 
 def main():
+    cur_date_time = time.strftime("%Y.%m.%d-%H.%M")
     print("Reading landmark positions")
     landmarks = read_world(
         "/home/nadav/studies/mapping_and_perception_autonomous_robots/mpar_hw_code/project3_code/FAST/world.dat")
@@ -279,31 +279,104 @@ def main():
     sensor_readings = read_sensor_data(
         "/home/nadav/studies/mapping_and_perception_autonomous_robots/mpar_hw_code/project3_code/FAST/sensor_data.dat")
 
-    num_particles = 100
-    num_landmarks = len(landmarks)
+    # num_particles = 100
+    total_rmse_best = []
+    total_rmse_ave = []
+    total_num_of_par = []
+    for num_particles in range(100, 0, -1):
+        print(num_particles)
+        num_landmarks = len(landmarks)
 
-    # create particle set
-    particles = initialize_particles(num_particles, num_landmarks)
+        # create particle set
+        particles = initialize_particles(num_particles, num_landmarks)
 
-    gt_trajectory = get_odometry_trajectory(sensor_readings)
+        gt_trajectory = get_odometry_trajectory(sensor_readings)
 
-    # run FastSLAM
-    for timestep in range(int(len(sensor_readings) / 2)):
+        # run FastSLAM
+        for timestep in range(int(len(sensor_readings) / 2)):
+            if False:
+                plot_fastSlam(gt_trajectory, landmarks, particles, timestep)
+            # predict particles by sampling from motion model with odometry info
+            sample_motion_model(sensor_readings[timestep, 'odometry'], particles)
+
+            # evaluate sensor model to update landmarks and calculate particle weights
+            eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
+
+            # plot filter state
+            # plot_state(particles, landmarks, timestep, gt_trajectory, cur_date_time)
+
+            # calculate new set of equally weighted particles
+            particles = resample_particles(particles)
+            # if timestep > 10:
+            #     break #TODO remove!!!
+
+        ''' best and ave particle comparison '''
+        best_particle = get_best_particle(particles)
+        average_history = get_average_history(particles)
+
+        best_hist = np.array(best_particle['history'])
+
+        cur_gt = gt_trajectory[:best_hist.shape[0], :]
+
+        diff_best = cur_gt - best_hist
+        diff_ave = cur_gt - average_history
+
+        ex_ey = diff_best[:, 0:2]
+        best_rmse = np.sqrt(np.sum(np.power(ex_ey, 2)) / ex_ey.shape[0])
+
+        ex_ey = diff_ave[:, 0:2]
+        average_rmse = np.sqrt(np.sum(np.power(ex_ey, 2)) / ex_ey.shape[0])
+
+        print(f'num of paticles={num_particles}, best rmse={best_rmse}, ave rmse={average_rmse}')
+
+        total_rmse_best.append(best_rmse)
+        total_rmse_ave.append(average_rmse)
+        total_num_of_par.append(num_particles)
+
         if False:
-            plot_fastSlam(gt_trajectory, landmarks, particles, timestep)
-        # predict particles by sampling from motion model with odometry info
-        sample_motion_model(sensor_readings[timestep, 'odometry'], particles)
+            plt.figure()
+            plt.plot(cur_gt[:, 0], cur_gt[:, 1], color='black', label='GT')
+            plt.plot(best_hist[:, 0], best_hist[:, 1], color='blue', label='best')
+            plt.plot(average_history[:, 0], average_history[:, 1], color='green', label='average')
+            plt.legend()
+            save_path = f'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_3/results/fast_slam/{cur_date_time}'
+            os.makedirs(save_path, exist_ok=True)
+            plt.savefig(os.path.join(save_path, f'comparison.png'), dpi=150)
+            plt.xlabel('x [m]')
+            plt.ylabel('y [m]')
+            plt.show()
 
-        # evaluate sensor model to update landmarks and calculate particle weights
-        eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
+    N = 5
+    cumsum, moving_aves_ave = [0], []
+    for i, x in enumerate(total_rmse_ave, 1):
+        cumsum.append(cumsum[i - 1] + x)
+        if i >= N:
+            moving_ave = (cumsum[i] - cumsum[i - N]) / N
+            # can do stuff with moving_ave here
+            moving_aves_ave.append(moving_ave)
 
-        # plot filter state
-        plot_state(particles, landmarks, timestep)
+    cumsum, moving_aves_best = [0], []
+    for i, x in enumerate(total_rmse_best, 1):
+        cumsum.append(cumsum[i - 1] + x)
+        if i >= N:
+            moving_ave = (cumsum[i] - cumsum[i - N]) / N
+            # can do stuff with moving_ave here
+            moving_aves_best.append(moving_ave)
 
-        # calculate new set of equally weighted particles
-        particles = resample_particles(particles)
+    if True:
+        plt.figure()
+        plt.plot(total_num_of_par, total_rmse_best, color='blue', label='rmse best')
+        plt.plot(total_num_of_par[N - 1:], moving_aves_best, color='blue', ls='--', label='moving average rmse')
+        plt.plot(total_num_of_par, total_rmse_ave, color='orange', label='rmse average')
+        plt.plot(total_num_of_par[N - 1:], moving_aves_ave, color='orange', ls='--', label='moving average rmse')
+        plt.grid()
+        plt.xlabel('num of particles')
+        plt.ylabel('rmse [m]')
+        plt.legend()
+        plt.show()
 
-    plt.show('hold')
+    a = 3
+    # plt.show('hold')
 
 
 def plot_fastSlam(gt_trajectory, landmarks, particles, timestep):
