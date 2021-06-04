@@ -303,7 +303,7 @@ def main():
             eval_sensor_model(sensor_readings[timestep, 'sensor'], particles)
 
             # plot filter state
-            # plot_state(particles, landmarks, timestep, gt_trajectory, cur_date_time)
+            plot_state(particles, landmarks, timestep, gt_trajectory, cur_date_time)
 
             # calculate new set of equally weighted particles
             particles = resample_particles(particles)
