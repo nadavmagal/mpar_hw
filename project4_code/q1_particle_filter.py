@@ -4,6 +4,8 @@ import pandas as pd
 import tqdm
 from read_data import read_world, read_sensor_data
 import time
+import os
+
 
 class ParticleFilter:
     def __init__(self, N):
@@ -30,19 +32,45 @@ class ParticleFilter:
     def eval_sensor_model(self, lidar_measurements, landmarks):
         for jj, cur_particle in enumerate(self.particles):
             self.weights[jj] = self.calculate_patricle_weight(cur_particle, landmarks, lidar_measurements)
+
+        normalizer = sum(self.weights)
+        for jj in range(self.weights.shape[0]):
+            self.weights[jj] = self.weights[jj] / normalizer
+
         return
 
-    def plot_state(self, ii, landmarks, save_plot=False, show_plot=False, save_path=None):
+    def resample_particles(self):
+        num_of_particles = self.particles.shape[0]
+        new_particles = []
+        r = (1 / num_of_particles) * np.random.uniform()
+        c = self.weights[0]
+        ii = 0
+        for particle_counter in range(num_of_particles):
+            U = r + (particle_counter) / num_of_particles
+            while U > c:
+                ii = ii + 1
+                c = c + self.weights[ii]
+
+            new_particles.append(self.particles[ii].copy())
+
+        self.particles = np.array(new_particles)
+        return
+
+    def plot_state(self, ii, landmarks, gt_trajectory, best_results_arr, average_results, save_plot=False,
+                   show_plot=False, save_path=None):
         if False:
             plt.figure()
             plt.scatter(range(self.weights.shape[0]), self.weights)
             plt.show(block=False)
 
         plt.figure()
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], color='blue', label='landmarks')
-        plt.scatter(self.particles[:, 0], self.particles[:, 1], color='red', label='particles')
-        for ll in range(self.weights.shape[0]):
-            plt.text(self.particles[ll, 0], self.particles[ll, 1], round(self.weights[ll], 2))
+        plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], s=2, color='black', label='GT trajectory')
+        plt.scatter(best_results_arr[:, 0], best_results_arr[:, 1], s=2, color='green', label='best trajectory')
+        plt.scatter(average_results[:, 0], average_results[:, 1], s=2, color='blue', label='ave trajectory')
+        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
+        plt.scatter(self.particles[:, 0], self.particles[:, 1], s=2, color='red', label='particles')
+        # for ll in range(self.weights.shape[0]):
+        #     plt.text(self.particles[ll, 0], self.particles[ll, 1], round(self.weights[ll], 2))
         plt.legend()
         plt.grid()
         plt.title('particles distribution')
@@ -56,11 +84,11 @@ class ParticleFilter:
 
     def prediction(self, odometry):
         self.particles_history.append(self.particles.copy())
-        delta_rot_1 = np.random.normal(odometry[0], self.sigmot['sigma_rot1'])
-        delta_rot_2 = np.random.normal(odometry[2], self.sigmot['sigma_rot2'])
-        delta_trans = np.random.normal(odometry[1], self.sigmot['sigma_trans'])
 
         for jj, cur_particle in enumerate(self.particles):
+            delta_rot_1 = np.random.normal(odometry[0], self.sigmot['sigma_rot1'])
+            delta_rot_2 = np.random.normal(odometry[2], self.sigmot['sigma_rot2'])
+            delta_trans = np.random.normal(odometry[1], self.sigmot['sigma_trans'])
             cur_particle[0] = cur_particle[0] + delta_trans * np.cos(cur_particle[2] + delta_rot_1)
             cur_particle[1] = cur_particle[1] + delta_trans * np.sin(cur_particle[2] + delta_rot_1)
             cur_particle[2] = self.normalize_angle(cur_particle[2] + delta_rot_1 + delta_rot_2)
@@ -73,7 +101,7 @@ class ParticleFilter:
         patricle_distance_from_landmarks = np.linalg.norm(np.tile(particle[0:2], [N_landmarks, 1]) - landmarks, axis=1)
         rmse = np.linalg.norm(patricle_distance_from_landmarks - lidar_measurments)
 
-        coef = 0.1
+        coef = 0.05
         weight = np.exp(-coef * rmse)
 
         return weight
@@ -87,6 +115,15 @@ class ParticleFilter:
             angle = angle + 2 * np.pi
 
         return angle
+
+    def get_best_particle_pose(self):
+        index_of_best_particle = np.argmax(self.weights)
+        return self.particles[index_of_best_particle, 0:2]
+
+    def get_w_average_pose(self):
+        ave_x = np.sum(np.multiply(self.weights, self.particles[:, 0])) / np.sum(self.weights)
+        ave_y = np.sum(np.multiply(self.weights, self.particles[:, 1])) / np.sum(self.weights)
+        return np.array([ave_x, ave_y])
 
 
 def get_odometry_trajectory(odometry):
@@ -110,13 +147,13 @@ def get_odometry_trajectory(odometry):
     return trajectory
 
 
-def run_particle_filter(landmarks, odometry, lidar_measurments, N, save_path):
+def run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path, gt_trajectory):
     particle_filter = ParticleFilter(N)
 
     if False:
         plt.figure()
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], color='blue', label='landmarks')
-        plt.scatter(particle_filter.get_particles()[:, 0], particle_filter.get_particles()[:, 1], color='red',
+        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
+        plt.scatter(particle_filter.get_particles()[:, 0], particle_filter.get_particles()[:, 1], color='red', s=2,
                     label='particles')
         plt.legend()
         plt.grid()
@@ -125,12 +162,23 @@ def run_particle_filter(landmarks, odometry, lidar_measurments, N, save_path):
         plt.ylabel('y[m]')
         plt.show(block=False)
 
+    best_results = []
+    average_results = []
     for ii in tqdm.tqdm(range(odometry.shape[0])):
         cur_odometry = odometry[ii]
         cur_lidar_measurment = lidar_measurments[ii]
         particle_filter.prediction(cur_odometry)
         particle_filter.eval_sensor_model(cur_lidar_measurment, landmarks)
-        particle_filter.plot_state(ii, landmarks, save_plot=True, show_plot=True, save_path=save_path)
+
+        best_results.append(particle_filter.get_best_particle_pose())
+        average_results.append(particle_filter.get_w_average_pose())
+        best_results_arr = np.array(best_results)
+        average_results_arr = np.array(average_results)
+
+        particle_filter.plot_state(ii, landmarks, gt_trajectory, best_results_arr, average_results_arr, save_plot=True,
+                                   show_plot=False,
+                                   save_path=timed_save_path)
+        particle_filter.resample_particles()
 
     a = 3
 
@@ -149,15 +197,20 @@ def main():
     landmarks_fp = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_4/files/landmarks_EX1.csv'
     odometry_fp = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_4/files/odometry.dat'
 
+    save_path = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_4/results'
+    date_and_time = time.strftime("%Y.%m.%d-%H.%M")
+    timed_save_path = os.path.join(save_path, date_and_time)
+    os.makedirs(timed_save_path, exist_ok=True)
+
     landmarks = np.array(pd.read_csv(landmarks_fp, header=None))
     odometry = np.array(pd.read_csv(odometry_fp, header=None, delimiter=' '))[:, 1:]  # r1, trans, r2
 
     gt_trajectory = get_odometry_trajectory(odometry)
 
-    if True:
+    if False:
         plt.figure()
-        plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], color='black', label='GT trajectory')
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], color='blue', label='landmarks')
+        plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], s=2, color='black', label='GT trajectory')
+        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
         plt.legend()
         plt.grid()
         plt.title('GT trajecory and landmarks')
@@ -168,7 +221,7 @@ def main():
     lidar_measurments = create_lidar_measurments(gt_trajectory, landmarks)
 
     N = 100  # number of particles
-    run_particle_filter(landmarks, odometry, lidar_measurments, N, save_path)
+    run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path, gt_trajectory)
 
 
 if __name__ == "__main__":
