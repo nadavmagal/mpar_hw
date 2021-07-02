@@ -63,23 +63,25 @@ class ParticleFilter:
             plt.scatter(range(self.weights.shape[0]), self.weights)
             plt.show(block=False)
 
-        plt.figure()
-        plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], s=2, color='black', label='GT trajectory')
-        plt.scatter(best_results_arr[:, 0], best_results_arr[:, 1], s=2, color='green', label='best trajectory')
-        plt.scatter(average_results[:, 0], average_results[:, 1], s=2, color='blue', label='ave trajectory')
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
-        plt.scatter(self.particles[:, 0], self.particles[:, 1], s=2, color='red', label='particles')
-        # for ll in range(self.weights.shape[0]):
-        #     plt.text(self.particles[ll, 0], self.particles[ll, 1], round(self.weights[ll], 2))
-        plt.legend()
-        plt.grid()
-        plt.title('particles distribution')
-        plt.xlabel('x[m]')
-        plt.ylabel('y[m]')
+        if show_plot or save_plot:
+            plt.figure()
+            plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], s=2, color='black', label='GT trajectory')
+            plt.scatter(best_results_arr[:, 0], best_results_arr[:, 1], s=2, color='green', label='best trajectory')
+            plt.scatter(average_results[:, 0], average_results[:, 1], s=2, color='blue', label='ave trajectory')
+            plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='magenta', label='landmarks')
+            plt.scatter(self.particles[:, 0], self.particles[:, 1], s=2, color='red', label='particles')
+            # for ll in range(self.weights.shape[0]):
+            #     plt.text(self.particles[ll, 0], self.particles[ll, 1], round(self.weights[ll], 2))
+            plt.legend()
+            plt.grid()
+            plt.title('particles distribution')
+            plt.xlabel('x[m]')
+            plt.ylabel('y[m]')
 
         if show_plot:
             plt.show(block=False)
         if save_plot:
+            os.makedirs(save_path, exist_ok=True)
             plt.savefig(os.path.join(save_path, f'state_{ii}.png'), dpi=150)
 
     def prediction(self, odometry):
@@ -101,7 +103,7 @@ class ParticleFilter:
         patricle_distance_from_landmarks = np.linalg.norm(np.tile(particle[0:2], [N_landmarks, 1]) - landmarks, axis=1)
         rmse = np.linalg.norm(patricle_distance_from_landmarks - lidar_measurments)
 
-        coef = 0.05
+        coef = 0.1
         weight = np.exp(-coef * rmse)
 
         return weight
@@ -146,27 +148,24 @@ def get_odometry_trajectory(odometry):
 
     return trajectory
 
+def get_rmse(gt_trajectory, average_results_arr, best_results_arr):
+    diff_best = gt_trajectory[:best_results_arr.shape[0],0:2] - best_results_arr
+    diff_ave = gt_trajectory[:average_results_arr.shape[0],0:2] - average_results_arr
 
-def run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path, gt_trajectory):
+    best_rmse = np.sqrt(np.sum(np.power(diff_best, 2)) / diff_best.shape[0])
+    ave_rmse = np.sqrt(np.sum(np.power(diff_ave, 2)) / diff_ave.shape[0])
+
+    return best_rmse, ave_rmse
+
+def run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path, gt_trajectory, save_plot=False):
     particle_filter = ParticleFilter(N)
-
-    if False:
-        plt.figure()
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
-        plt.scatter(particle_filter.get_particles()[:, 0], particle_filter.get_particles()[:, 1], color='red', s=2,
-                    label='particles')
-        plt.legend()
-        plt.grid()
-        plt.title('initial particles distribution')
-        plt.xlabel('x[m]')
-        plt.ylabel('y[m]')
-        plt.show(block=False)
 
     best_results = []
     average_results = []
     for ii in tqdm.tqdm(range(odometry.shape[0])):
         cur_odometry = odometry[ii]
         cur_lidar_measurment = lidar_measurments[ii]
+
         particle_filter.prediction(cur_odometry)
         particle_filter.eval_sensor_model(cur_lidar_measurment, landmarks)
 
@@ -175,12 +174,14 @@ def run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_pa
         best_results_arr = np.array(best_results)
         average_results_arr = np.array(average_results)
 
-        particle_filter.plot_state(ii, landmarks, gt_trajectory, best_results_arr, average_results_arr, save_plot=True,
+        particle_filter.plot_state(ii, landmarks, gt_trajectory, best_results_arr, average_results_arr, save_plot=save_plot,
                                    show_plot=False,
                                    save_path=timed_save_path)
         particle_filter.resample_particles()
 
-    a = 3
+    best_trajectory_rmse, average_trajectory_rmse = get_rmse(gt_trajectory, average_results_arr, best_results_arr)
+
+    return best_trajectory_rmse, average_trajectory_rmse
 
 
 def create_lidar_measurments(gt_trajectory, landmarks):
@@ -200,30 +201,44 @@ def main():
     save_path = r'/home/nadav/studies/mapping_and_perception_autonomous_robots/project_4/results'
     date_and_time = time.strftime("%Y.%m.%d-%H.%M")
     timed_save_path = os.path.join(save_path, date_and_time)
-    os.makedirs(timed_save_path, exist_ok=True)
+
 
     landmarks = np.array(pd.read_csv(landmarks_fp, header=None))
     odometry = np.array(pd.read_csv(odometry_fp, header=None, delimiter=' '))[:, 1:]  # r1, trans, r2
 
     gt_trajectory = get_odometry_trajectory(odometry)
-
-    if False:
-        plt.figure()
-        plt.scatter(gt_trajectory[:, 0], gt_trajectory[:, 1], s=2, color='black', label='GT trajectory')
-        plt.scatter(landmarks[:, 0], landmarks[:, 1], s=2, color='blue', label='landmarks')
-        plt.legend()
-        plt.grid()
-        plt.title('GT trajecory and landmarks')
-        plt.xlabel('x[m]')
-        plt.ylabel('y[m]')
-        plt.show(block=False)
-
     lidar_measurments = create_lidar_measurments(gt_trajectory, landmarks)
 
     N = 100  # number of particles
-    run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path, gt_trajectory)
+    total_best_trajectory_rmse = []
+    total_average_trajectory_rmse = []
+    N_vec = list(range(100,0,-1))
+    # N_vec = [100]
+    for N in N_vec:
+        timed_save_path_with_N = timed_save_path+f'__N-{N}'
+        best_trajectory_rmse, average_trajectory_rmse = run_particle_filter(landmarks, odometry, lidar_measurments, N, timed_save_path_with_N, gt_trajectory, save_plot=False)
+        total_best_trajectory_rmse.append(best_trajectory_rmse)
+        total_average_trajectory_rmse.append(average_trajectory_rmse)
 
+    plt.figure()
+    plt.scatter(N_vec, total_best_trajectory_rmse, label='rmse best')
+    plt.scatter(N_vec, total_average_trajectory_rmse, label='rmse average')
+    plt.grid()
+    plt.title("RMSE of best and average particle trajectory as function of number of particles")
+    plt.xlabel('N')
+    plt.ylabel('rmse [m]')
+    plt.legend()
+    plt.savefig(os.path.join(save_path, f'rmse.png'), dpi=150)
 
 if __name__ == "__main__":
     np.random.seed(0)
     main()
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+    plt.figure()
+    x = np.array(list(range(0,50)))
+    plt.plot(x, np.exp(-0.05*x))
+    plt.grid()
+    plt.title('exp(-0.05x)')
+    plt.show(block=False)
